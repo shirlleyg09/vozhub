@@ -35,6 +35,8 @@
     <div class="ss-div"></div>
     <div id="ss-items"></div>
     <div class="ss-div" style="margin-top:auto"></div>
+    <button class="ss-btn" title="Volume do microfone" onclick="toggleMicVolSidebar()" style="font-size:.9rem">🎚️</button>
+    <button class="ss-btn" title="Sair (logout)" onclick="logout()" style="font-size:.9rem;color:var(--red)">🚪</button>
     <button class="ss-add" title="Criar servidor" onclick="toast('Criar servidor — em breve!')">+</button>
   </div>
 
@@ -54,16 +56,7 @@
       <div class="up-ctrls">
         <button class="up-btn" id="mic-btn" title="Microfone (M)" onclick="toggleMic()">🎤</button>
         <button class="up-btn" id="deaf-btn" title="Silenciar (D)" onclick="toggleDeaf()">🔊</button>
-        <button class="up-btn" title="Volume do microfone" onclick="toggleMicVol()">🎚️</button>
         <button class="up-btn" title="Configurações" onclick="openSettings()">⚙️</button>
-        <button class="up-btn" title="Sair (logout)" onclick="logout()" style="color:var(--red)">🚪</button>
-      </div>
-      <!-- Painel de volume do mic (aparece ao clicar em 🎚️) -->
-      <div class="mic-vol-panel" id="mic-vol-panel" style="display:none">
-        <span class="mvc-label">🎤 Volume do mic</span>
-        <input class="mvc-slider" type="range" min="0" max="200" value="100" id="mic-vol-sl"
-          oninput="setMicVolume(this.value)">
-        <span class="mvc-val" id="mic-vol-val">100%</span>
       </div>
     </div>
   </div>
@@ -256,6 +249,21 @@
       <button class="mo-cancel" onclick="closeMo('mo-settings')">Cancelar</button>
       <button class="mo-ok" onclick="applySettings()">Salvar</button>
     </div>
+  </div>
+</div>
+
+<!-- Mic volume vertical (flutuante, ao lado da sidebar) -->
+<div class="mic-vol-overlay" id="mic-vol-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="mic-vol-card">
+    <div class="mvc-title">🎤 Volume do Microfone</div>
+    <div class="mvc-track">
+      <span class="mvc-max">200%</span>
+      <input class="mvc-slider-v" type="range" min="0" max="200" value="100" id="mic-vol-sl"
+        orient="vertical" oninput="setMicVolume(this.value)">
+      <span class="mvc-min">0%</span>
+    </div>
+    <div class="mvc-cur" id="mic-vol-val">100%</div>
+    <button class="mvc-close" onclick="document.getElementById('mic-vol-overlay').style.display='none'">Fechar</button>
   </div>
 </div>
 

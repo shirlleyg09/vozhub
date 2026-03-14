@@ -18,18 +18,26 @@ function getSC() {
 }
 
 const RADIOS = [
-  { id:'lofi1',     name:'Lofi Hip Hop Radio',   emoji:'🎧', url:'https://streams.ilovemusic.de/iloveradio17.mp3',                 genre:'Lo-fi'     },
-  { id:'jazz1',     name:'Jazz 24',               emoji:'🎷', url:'https://live.wostreaming.net/manifest/ppm-jazz24aac-ibc1.m3u8', genre:'Jazz'      },
-  { id:'chill1',    name:'Chill Out Zone',        emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',                 genre:'Chill'     },
-  { id:'pop1',      name:'OpenFM Pop',            emoji:'🎵', url:'https://stream.open.fm/4',                                     genre:'Pop'       },
-  { id:'rock1',     name:'Radio Rock BR',         emoji:'🎸', url:'https://24803.live.streamtheworld.com/RADIOROCK_ADP.aac',       genre:'Rock'      },
-  { id:'classical', name:'Classic FM',            emoji:'🎻', url:'https://media-ice.musicradio.com/ClassicFMMP3',                genre:'Clássico'  },
-  { id:'gospel1',   name:'Rádio Gospel Ativa',   emoji:'✝️',  url:'https://cast1.hoost.com.br:7136/stream',                       genre:'Gospel'    },
-  { id:'ambient1',  name:'Ambient Sleeping Pill', emoji:'🌙', url:'https://he.cdn.ambslp.com:3440/ambientslp',                    genre:'Ambient'   },
-  { id:'brasil1',   name:'Rádio Brasil Atual',   emoji:'🇧🇷', url:'https://rbatual.webradiobrasil.com.br/rbatual128',             genre:'Brasil'    },
-  { id:'samba1',    name:'Samba Radio BR',        emoji:'🥁', url:'https://sambaradiobr.webradiobrasil.com.br/sambaradiobr128',   genre:'Samba'     },
-  { id:'eletronic', name:'DI.FM Electronic',      emoji:'⚡', url:'https://prem4.di.fm/electronicpioneers?1234567',               genre:'Eletrônico' },
-  { id:'hiphop1',   name:'HipHop Radio Global',  emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',                genre:'Hip-Hop'   },
+  // Gospel — múltiplas opções confiáveis
+  { id:'gospel1',   name:'Rádio Gospel Mais',     emoji:'✝️',  url:'https://stream.zeno.fm/yn65m0tmdrhvv',                         genre:'Gospel'    },
+  { id:'gospel2',   name:'Gospel Prime',           emoji:'🙏', url:'https://stream.zeno.fm/f3e4rqrmb5zuv',                         genre:'Gospel'    },
+  { id:'gospel3',   name:'Rádio Melodia',          emoji:'🎶', url:'https://stream.zeno.fm/tsua3rs0y6zuv',                         genre:'Gospel'    },
+  // Lo-fi / Chill
+  { id:'lofi1',     name:'Lofi Hip Hop',           emoji:'🎧', url:'https://stream.zeno.fm/f3e4jkrmb5zuv',                         genre:'Lo-fi'     },
+  { id:'chill1',    name:'Chill Out Zone',         emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',                genre:'Chill'     },
+  { id:'ambient1',  name:'Ambient Radio',          emoji:'🌙', url:'https://stream.zeno.fm/yn65m0tndrhvv',                         genre:'Ambient'   },
+  // Pop / Rock
+  { id:'pop1',      name:'Pop Hits Brasil',        emoji:'🎵', url:'https://stream.zeno.fm/4d5n1qrmb5zuv',                         genre:'Pop'       },
+  { id:'rock1',     name:'Radio Rock',             emoji:'🎸', url:'https://streams.ilovemusic.de/iloveradio5.mp3',                genre:'Rock'      },
+  // Sertanejo / Brasil
+  { id:'sertanejo', name:'Sertanejo Total',        emoji:'🤠', url:'https://stream.zeno.fm/2e0hmqrmb5zuv',                         genre:'Sertanejo' },
+  { id:'brasil1',   name:'MPB Radio',              emoji:'🇧🇷', url:'https://streams.ilovemusic.de/iloveradio24.mp3',              genre:'MPB'       },
+  { id:'samba1',    name:'Pagode e Samba',         emoji:'🥁', url:'https://stream.zeno.fm/7f0hmqrmb5zuv',                         genre:'Samba'     },
+  // Outros
+  { id:'jazz1',     name:'Jazz Radio',             emoji:'🎷', url:'https://streams.ilovemusic.de/iloveradio10.mp3',               genre:'Jazz'      },
+  { id:'classical', name:'Classical Music',        emoji:'🎻', url:'https://streams.ilovemusic.de/iloveradio14.mp3',               genre:'Clássico'  },
+  { id:'hiphop1',   name:'Hip Hop Radio',          emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',                genre:'Hip-Hop'   },
+  { id:'eletronic', name:'Electronic / Dance',     emoji:'⚡', url:'https://streams.ilovemusic.de/iloveradio3.mp3',                genre:'Eletrônico'},
 ];
 
 class MusicBot {
@@ -199,14 +207,16 @@ class MusicBot {
 
       if (!videoId) { socket?.emit('music:error', { msg: 'Não foi possível identificar o vídeo.' }); return; }
 
-      // Stream via Invidious (instância pública — não precisa de ytdl)
-      const invidiousStream = `https://inv.nadeko.net/latest_version?id=${videoId}&itag=140`;
+      // streamUrl será resolvido pelo proxy /api/ytstream no cliente
+      // O servidor tenta ytdl se disponível, senão usa Invidious como fallback
+      const streamUrl = `/api/ytstream?id=${videoId}`;
 
       this._enqueue({
         id: videoId, type: 'youtube', emoji: '▶️',
         title: title || 'YouTube Video',
         artist: (artist || 'YouTube') + ' · por ' + requestedBy,
-        url: videoUrl, streamUrl: invidiousStream,
+        url: videoUrl || `https://youtube.com/watch?v=${videoId}`,
+        streamUrl,
         duration, durationFmt, requestedBy,
         thumbnail: thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
         isLive: false,
@@ -274,14 +284,42 @@ class MusicBot {
       } catch(err) { res.status(500).json({error:err.message}); }
     });
 
-    // YouTube stream proxy
-    app.get('/api/ytstream', async (req,res) => {
-      const { url } = req.query;
-      if(!ytdl||!url||!ytdl.validateURL(url)) return res.status(400).json({error:'ytdl indisponível ou URL inválida'});
-      try {
-        res.setHeader('Content-Type','audio/mpeg');
-        ytdl(url,{filter:'audioonly',quality:'lowestaudio'}).pipe(res).on('error',()=>res.end());
-      } catch(err) { res.status(500).json({error:err.message}); }
+    // YouTube stream proxy — tenta ytdl primeiro, depois Invidious
+    const INVIDIOUS = [
+      'https://inv.nadeko.net',
+      'https://invidious.nerdvpn.de',
+      'https://invidious.privacydev.net',
+      'https://iv.datura.network',
+    ];
+
+    app.get('/api/ytstream', async (req, res) => {
+      const { url, id } = req.query;
+      const videoId = id || (url ? (url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)||[])[1] : null);
+      if (!videoId) return res.status(400).json({ error: 'videoId inválido' });
+
+      // Tenta ytdl primeiro
+      if (ytdl) {
+        try {
+          const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          res.setHeader('Content-Type', 'audio/mpeg');
+          ytdl(ytUrl, { filter:'audioonly', quality:'lowestaudio' })
+            .pipe(res).on('error', () => {});
+          return;
+        } catch {}
+      }
+
+      // Fallback: Invidious (tenta cada instância)
+      const fetch = require('node-fetch');
+      for (const instance of INVIDIOUS) {
+        try {
+          const apiUrl  = `${instance}/api/v1/videos/${videoId}`;
+          const data    = await fetch(apiUrl, { timeout: 5000 }).then(r => r.json());
+          const formats = (data.adaptiveFormats || []).filter(f => f.type?.includes('audio'));
+          const best    = formats.sort((a,b) => (b.bitrate||0)-(a.bitrate||0))[0];
+          if (best?.url) { res.redirect(best.url); return; }
+        } catch {}
+      }
+      res.status(503).json({ error: 'Nenhuma fonte de stream disponível para este vídeo.' });
     });
 
     app.get('/api/sources', (_,res) => res.json({
