@@ -29,7 +29,10 @@ function getACtx() {
   return _actx;
 }
 ['click','touchstart','keydown'].forEach(ev =>
-  document.addEventListener(ev, () => getACtx(), { once: true })
+  document.addEventListener(ev, () => {
+    getACtx();
+    window._botAudio?.unlock();
+  }, { once: true })
 );
 
 function playSound(type) {
@@ -137,6 +140,9 @@ async function doLogin() {
   rtc = new WebRTCManager(socket);
   rtc.onSpeaking = sp => socket.emit('audio:speaking', { speaking: sp });
   await rtc.initMic();
+
+  // Bot de áudio server-side (igual Discord)
+  window._botAudio = new BotAudioPlayer(socket);
   fetch('/api/sources').then(r => r.json()).then(src => { S.sources = src; updateSourceBadges(); }).catch(() => {});
 }
 
@@ -400,35 +406,9 @@ function updateMusicUI() {
   if (m.playing&&!m.paused&&t.duration>0) {
     progIv = setInterval(() => { localProg=Math.min(localProg+.25, t.duration); updProg(); }, 250);
   }
-  // Tocar áudio localmente
-  const streamUrl = t.streamUrl || t.url || '';
-  if (m.playing && !m.paused && streamUrl) {
-    if (audio.dataset.url !== streamUrl) {
-      audio.dataset.url = streamUrl;
-      // Para rádios ao vivo: usa preload=none para começar mais rápido
-      if (t.isLive || t.type === 'radio') {
-        audio.preload = 'none';
-        audio.src = streamUrl;
-        audio.load();
-      } else {
-        audio.preload = 'auto';
-        audio.src = streamUrl;
-        if (t.duration > 0) audio.currentTime = Math.max(0, localProg - 1);
-      }
-      audio.volume = document.getElementById('vol-sl').value / 100;
-      const playPromise = audio.play();
-      if (playPromise) {
-        playPromise.catch(e => {
-          console.warn('audio play blocked:', e.message);
-          // Mostra botão para o usuário clicar e desbloquear o áudio
-          if (e.name === 'NotAllowedError') {
-            toast('🔊 Clique em qualquer lugar para ativar o áudio');
-            document.addEventListener('click', () => audio.play().catch(()=>{}), { once: true });
-          }
-        });
-      }
-    }
-  } else if (!m.playing || m.paused) {
+  // Áudio gerenciado pelo BotAudioPlayer (chunks do servidor)
+  // O elemento <audio> é usado como fallback quando ffmpeg não está disponível
+  if (!m.playing || m.paused) {
     audio.pause();
   }
 }
@@ -441,15 +421,17 @@ function updProg() {
 }
 
 function setLocalVol(v) {
-  document.getElementById('music-audio').volume = v/100;
+  const vol = v / 100;
+  document.getElementById('music-audio').volume = Math.min(1, vol);
   document.getElementById('vol-ic').textContent = v==0?'🔇':v<40?'🔉':'🔈';
+  window._botAudio?.setVolume(vol);
 }
 
 function toggleMuteLocal() {
   S.localMuted = !S.localMuted;
-  document.getElementById('music-audio').muted = S.localMuted;
   document.getElementById('vol-sl').value = S.localMuted?0:80;
   setLocalVol(S.localMuted?0:80);
+  window._botAudio?.mute(S.localMuted);
   toast(S.localMuted?'🔇 Música silenciada':'🔈 Música ativada');
 }
 

@@ -3,6 +3,17 @@
  * Node.js + Express + Socket.IO + WebRTC Signaling + MusicBot v2
  */
 
+// ── Proteção global contra crashes ───────────────────────
+// Impede que erros não capturados (ex: ytdl 429) derrubem o servidor
+process.on('uncaughtException', err => {
+  console.error('[ERRO NÃO CAPTURADO]', err.message);
+  // Não deixa o processo morrer
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[PROMISE NÃO TRATADA]', reason?.message || reason);
+  // Não deixa o processo morrer
+});
+
 const express      = require('express');
 const http         = require('http');
 const fs           = require('fs');
@@ -99,6 +110,8 @@ function leaveChannel(socket, srvId, chId) {
   const user = ch.users.get(socket.id);
   ch.users.delete(socket.id);
   socket.leave(roomName(srvId, chId));
+  // Remove do audioStream
+  ch.musicBot.removeAudioListener(socket.id);
 
   // Se canal ficou vazio, pausa a música automaticamente
   if (ch.users.size === 0 && ch.musicBot.playing) {
@@ -140,10 +153,11 @@ io.on('connection', socket => {
     io.to(room).emit('channel:users', { key, users: [...ch.users.values()], music: ch.musicBot.getState() });
     const peers = [...ch.users.keys()].filter(id => id !== socket.id);
     socket.emit('voice:peers', { peers, key });
+    // Registra no audioStream para receber chunks de áudio
+    ch.musicBot.addAudioListener(socket);
     // Envia estado completo da música ao entrar (inclui fila preservada)
     const musicState = ch.musicBot.getState();
     socket.emit('music:state', musicState);
-    // Se tinha música tocando, notifica para o cliente retomar
     if (musicState.playing && musicState.track) {
       socket.emit('music:restore', { state: musicState });
     }

@@ -6,6 +6,7 @@
 
 const path = require('path');
 const fs   = require('fs');
+const { AudioStream, FFMPEG, YTDLP } = require('./audioStream');
 
 // ── Persistência da fila em arquivo ──────────────────────
 const QUEUE_DIR  = path.join(__dirname, '../data');
@@ -66,8 +67,20 @@ class MusicBot {
     this.queue = []; this.currentIdx = -1; this.playing = false; this.paused = false;
     this.volume = 80; this.shuffled = false; this.elapsed = 0;
     this.startedAt = null; this._skipTimer = null; this.history = [];
+    // AudioStream: streaming server-side igual bot Discord
+    this.audioStream = new AudioStream(io, channelKey);
+    // Quando faixa termina no audioStream, pula para próxima
+    io.on('connection', () => {}); // placeholder
     // Restaura fila salva do disco
     this._loadQueue();
+  }
+
+  // Registra socket no audioStream (chamado ao entrar no canal)
+  addAudioListener(socket) {
+    this.audioStream.addListener(socket);
+  }
+  removeAudioListener(socketId) {
+    this.audioStream.removeListener(socketId);
   }
 
   _loadQueue() {
@@ -109,7 +122,7 @@ class MusicBot {
       progress: Math.floor(Math.max(0, progress)),
       queue: this.queue.map((t, i) => ({ ...t, isCurrent: i === this.currentIdx })),
       track, radios: RADIOS,
-      sources: { soundcloud: !!getSC(), youtube: true },
+      sources: { soundcloud: !!getSC(), youtube: true, ffmpeg: !!FFMPEG, ytdlp: !!YTDLP },
     };
   }
 
@@ -301,10 +314,10 @@ class MusicBot {
     this.io.to(this.room).emit('music:added', { track, requestedBy, queueLength: this.queue.length });
     console.log(`[Bot:${this.channelKey}] ➕ "${track.title}" por ${requestedBy}`);
   }
-  pause()  { if(!this.playing||this.paused) return; this.paused=true; if(this.startedAt) this.elapsed+=(Date.now()-this.startedAt)/1000; this._clearTimer(); this.broadcast(); }
-  resume() { if(!this.playing||!this.paused) return; this.paused=false; this.startedAt=Date.now(); const t=this.queue[this.currentIdx]; if(t?.duration>0){const r=t.duration-this.elapsed; if(r>0) this._skipTimer=setTimeout(()=>this.skip(),r*1000);} this.broadcast(); }
+  pause()  { if(!this.playing||this.paused) return; this.paused=true; if(this.startedAt) this.elapsed+=(Date.now()-this.startedAt)/1000; this._clearTimer(); this.audioStream.pause(); this.broadcast(); }
+  resume() { if(!this.playing||!this.paused) return; this.paused=false; this.startedAt=Date.now(); const t=this.queue[this.currentIdx]; if(t?.duration>0){const r=t.duration-this.elapsed; if(r>0) this._skipTimer=setTimeout(()=>this.skip(),r*1000);} this.audioStream.resume(); this.broadcast(); }
   skip()   { this._clearTimer(); if(!this.queue.length) return; const next=this.shuffled?Math.floor(Math.random()*this.queue.length):this.currentIdx+1; if(!this.shuffled&&next>=this.queue.length){this.stop();return;} this.currentIdx=next; this._startTrack(); this._saveQueue(); this.broadcast(); }
-  stop()   { this._clearTimer(); this.playing=false; this.paused=false; this.currentIdx=-1; this.elapsed=0; this.startedAt=null; this._saveQueue(); this.broadcast(); }
+  stop()   { this._clearTimer(); this.playing=false; this.paused=false; this.currentIdx=-1; this.elapsed=0; this.startedAt=null; this.audioStream.stop(); this._saveQueue(); this.broadcast(); }
   playAt(socket,{index}){ if(index<0||index>=this.queue.length) return; this._clearTimer(); this.currentIdx=index; this._startTrack(); this.broadcast(); }
   removeFromQueue(socket,{index}){ if(index<0||index>=this.queue.length) return; const r=this.queue.splice(index,1)[0]; if(index<this.currentIdx) this.currentIdx--; else if(index===this.currentIdx){if(!this.queue.length){this.stop();return;} this.currentIdx=Math.min(this.currentIdx,this.queue.length-1); this._startTrack();} this._saveQueue(); this.broadcast(); }
   shuffle()             { this.shuffled=!this.shuffled; this.broadcast(); }
@@ -315,6 +328,8 @@ class MusicBot {
     this.playing=true; this.paused=false; this.elapsed=0; this.startedAt=Date.now();
     const t=this.queue[this.currentIdx]; if(!t) return;
     if(t.duration>0) this._skipTimer=setTimeout(()=>this.skip(),t.duration*1000);
+    // Inicia streaming server-side
+    this.audioStream.startTrack(t).catch(e => console.error('[Bot] audioStream error:', e.message));
     console.log(`[Bot:${this.channelKey}] ▶ "${t.title}"`);
   }
   _clearTimer() { clearTimeout(this._skipTimer); }
