@@ -14,6 +14,52 @@ const S = {
   sources: { radio: true, mp3: true, url: true, soundcloud: false, youtube: false },
 };
 
+/* ── Sons de UI (Web Audio API — sem arquivos externos) ── */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let _actx = null;
+function getACtx() { if (!_actx) _actx = new AudioCtx(); return _actx; }
+
+function playSound(type) {
+  try {
+    const ctx = getACtx();
+    const g   = ctx.createGain();
+    g.connect(ctx.destination);
+    if (type === 'join') {
+      // Dois tons subindo — "ding dong" positivo
+      [440, 660].forEach((freq, i) => {
+        const o = ctx.createOscillator();
+        o.type = 'sine'; o.frequency.value = freq;
+        o.connect(g);
+        g.gain.setValueAtTime(0, ctx.currentTime + i * 0.18);
+        g.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.18 + 0.02);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.18 + 0.22);
+        o.start(ctx.currentTime + i * 0.18);
+        o.stop(ctx.currentTime + i * 0.18 + 0.25);
+      });
+    } else {
+      // Tom descendente — "dong" suave de saída
+      const o = ctx.createOscillator();
+      o.type = 'sine'; o.frequency.setValueAtTime(520, ctx.currentTime);
+      o.frequency.linearRampToValueAtTime(300, ctx.currentTime + 0.3);
+      o.connect(g);
+      g.gain.setValueAtTime(0.15, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35);
+      o.start(); o.stop(ctx.currentTime + 0.4);
+    }
+  } catch {}
+}
+
+/* ── Login persistente (localStorage) ────────────────── */
+function saveSession(name) {
+  try { localStorage.setItem('vozhub_name', name); } catch {}
+}
+function clearSession() {
+  try { localStorage.removeItem('vozhub_name'); } catch {}
+}
+function getSavedName() {
+  try { return localStorage.getItem('vozhub_name') || ''; } catch { return ''; }
+}
+
 /* ── Utils ─────────────────────────────────────────────── */
 const AVC = ['av-b','av-v','av-c','av-e','av-a','av-r','av-t','av-l'];
 const avc  = n => { let h=0; for(const c of n) h=(h+c.charCodeAt(0))%AVC.length; return AVC[h]; };
@@ -31,9 +77,19 @@ function toast(m) {
 
 /* ── Conexão ───────────────────────────────────────────── */
 socket.on('connect', () => {
-  const st = document.getElementById('conn-status');
-  st.textContent = '✅ Conectado! Digite seu nome.'; st.className = 'conn-status ok';
-  document.getElementById('login-btn').disabled = false;
+  const st   = document.getElementById('conn-status');
+  const saved = getSavedName();
+  if (saved) {
+    // Login automático se já tem sessão salva
+    document.getElementById('ni').value = saved;
+    st.textContent = `✅ Bem-vindo de volta, ${saved}! Entrando...`;
+    st.className = 'conn-status ok';
+    document.getElementById('login-btn').disabled = false;
+    setTimeout(() => doLogin(), 400);
+  } else {
+    st.textContent = '✅ Conectado! Digite seu nome.'; st.className = 'conn-status ok';
+    document.getElementById('login-btn').disabled = false;
+  }
 });
 socket.on('connect_error', () => {
   const st = document.getElementById('conn-status');
@@ -48,6 +104,7 @@ document.getElementById('ni').addEventListener('keydown', e => { if (e.key === '
 async function doLogin() {
   const v = document.getElementById('ni').value.trim(); if (!v) return;
   S.me = { socketId: socket.id, name: v };
+  saveSession(v);
   socket.emit('join:app', { name: v });
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
@@ -226,12 +283,20 @@ async function joinVoice() {
   if (!rtc?.localStream) { const ok = await rtc?.initMic(); if (!ok) { toast('❌ Permita acesso ao microfone'); return; } }
   S.connected = true;
   socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
+  playSound('join');
   rAll(); toast('🎤 Conectado a ' + ch.name);
 }
 
 function leaveVoice() {
   S.connected = false; socket.emit('voice:leave');
+  playSound('leave');
   rtc?.disconnect(); S.users = []; rAll(); toast('🚪 Saiu do canal');
+}
+
+function logout() {
+  clearSession();
+  leaveVoice();
+  setTimeout(() => window.location.reload(), 300);
 }
 
 function toggleMic() {

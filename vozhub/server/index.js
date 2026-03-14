@@ -3,17 +3,32 @@
  * Node.js + Express + Socket.IO + WebRTC Signaling + MusicBot v2
  */
 
-const express     = require('express');
-const http        = require('http');
-const { Server }  = require('socket.io');
-const cors        = require('cors');
-const path        = require('path');
+const express      = require('express');
+const http         = require('http');
+const https        = require('https');
+const fs           = require('fs');
+const { Server }   = require('socket.io');
+const cors         = require('cors');
+const path         = require('path');
 const { v4: uuid } = require('uuid');
 const { MusicBot } = require('./musicBot');
 
-const app    = express();
-const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
+const app = express();
+
+// ── HTTPS com certificado mkcert ─────────────────────────
+// Coloque cert.crt e cert.key na pasta raiz do projeto (vozhub/)
+const certFile = path.join(__dirname, '..', 'cert.crt');
+const keyFile  = path.join(__dirname, '..', 'cert.key');
+
+let server, isHttps = false;
+if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
+  server  = https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, app);
+  isHttps = true;
+} else {
+  server = http.createServer(app);
+}
+
+const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
 const UPLOAD_DIR = path.join(__dirname, '../public/uploads');
 
 app.use(cors());
@@ -240,4 +255,30 @@ app.get('/api/servers', (_, res) => res.json(SERVERS_CONFIG.map(s => fullServer(
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`\n🎙️  VozHub v2 → http://localhost:${PORT}\n`));
+
+// Descobre o IP local para mostrar no console
+function getLocalIP() {
+  const { networkInterfaces } = require('os');
+  for (const iface of Object.values(networkInterfaces())) {
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) return alias.address;
+    }
+  }
+  return 'localhost';
+}
+
+server.listen(PORT, '0.0.0.0', () => {
+  const proto = isHttps ? 'https' : 'http';
+  const ip    = getLocalIP();
+  console.log('');
+  console.log('  🎙️  VozHub rodando!');
+  console.log('');
+  console.log(`  Local:   ${proto}://localhost:${PORT}`);
+  console.log(`  iPhone:  ${proto}://${ip}:${PORT}   ← use este no celular`);
+  if (!isHttps) {
+    console.log('');
+    console.log('  ⚠️  Para microfone no iPhone, rode em HTTPS:');
+    console.log('     Coloque cert.crt e cert.key na pasta vozhub/');
+  }
+  console.log('');
+});
