@@ -12,6 +12,16 @@ const path  = require('path');
 const fs    = require('fs');
 const fetch = require('node-fetch');
 
+const YT_COOKIES_FILE = process.env.YT_COOKIES_FILE || null;
+
+// ── Cookie do YouTube (Render ENV) ──────────────────────
+
+if (YT_COOKIES_FILE) {
+  console.log(`[AudioStream] Usando cookies do YouTube: ${YT_COOKIES_FILE}`);
+} else {
+  console.log('[AudioStream] Nenhum cookie do YouTube configurado');
+}
+
 // ── Detecta ferramentas disponíveis ──────────────────────
 function detectTool(names) {
   for (const name of names) {
@@ -96,11 +106,21 @@ class AudioStream {
       if (YTDLP) {
         try {
           const { stdout } = await new Promise((res, rej) => {
-            const p = spawn(YTDLP, [
-              `https://www.youtube.com/watch?v=${videoId}`,
-              '--get-url', '-f', 'bestaudio[ext=webm]/bestaudio/best',
-              '--no-playlist', '--quiet', '--no-warnings',
-            ]);
+           const ytArgs = [
+  `https://www.youtube.com/watch?v=${videoId}`,
+  '--get-url',
+  '-f', 'bestaudio[ext=webm]/bestaudio/best',
+  '--no-playlist',
+  '--quiet',
+  '--no-warnings'
+];
+
+// adiciona cookies se existir
+if (YT_COOKIES_FILE) {
+  ytArgs.push('--cookies', YT_COOKIES_FILE);
+}
+
+const p = spawn(YTDLP, ytArgs);
             let out = '', err = '';
             p.stdout.on('data', d => out += d);
             p.stderr.on('data', d => err += d);
