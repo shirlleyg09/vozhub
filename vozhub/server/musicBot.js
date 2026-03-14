@@ -5,6 +5,26 @@
  */
 
 const path = require('path');
+const fs   = require('fs');
+
+// ── Persistência da fila em arquivo ──────────────────────
+const QUEUE_DIR  = path.join(__dirname, '../data');
+const QUEUE_FILE = path.join(QUEUE_DIR, 'queues.json');
+
+function loadQueues() {
+  try {
+    if (!fs.existsSync(QUEUE_DIR)) fs.mkdirSync(QUEUE_DIR, { recursive: true });
+    if (!fs.existsSync(QUEUE_FILE)) return {};
+    return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+  } catch { return {}; }
+}
+
+function saveQueues(data) {
+  try {
+    if (!fs.existsSync(QUEUE_DIR)) fs.mkdirSync(QUEUE_DIR, { recursive: true });
+    fs.writeFileSync(QUEUE_FILE, JSON.stringify(data, null, 2));
+  } catch(e) { console.error('[Queue] Erro ao salvar:', e.message); }
+}
 
 // Dependências opcionais
 let ytSearch, SC;
@@ -46,6 +66,36 @@ class MusicBot {
     this.queue = []; this.currentIdx = -1; this.playing = false; this.paused = false;
     this.volume = 80; this.shuffled = false; this.elapsed = 0;
     this.startedAt = null; this._skipTimer = null; this.history = [];
+    // Restaura fila salva do disco
+    this._loadQueue();
+  }
+
+  _loadQueue() {
+    try {
+      const all = loadQueues();
+      const saved = all[this.channelKey];
+      if (saved && saved.queue?.length) {
+        this.queue      = saved.queue;
+        this.currentIdx = saved.currentIdx ?? -1;
+        this.shuffled   = saved.shuffled ?? false;
+        // Começa pausado ao restaurar (não auto-toca)
+        this.playing = false; this.paused = true;
+        console.log(`[Bot:${this.channelKey}] Fila restaurada: ${this.queue.length} faixas`);
+      }
+    } catch(e) { console.error('[Bot] _loadQueue:', e.message); }
+  }
+
+  _saveQueue() {
+    try {
+      const all = loadQueues();
+      all[this.channelKey] = {
+        queue:      this.queue,
+        currentIdx: this.currentIdx,
+        shuffled:   this.shuffled,
+        savedAt:    Date.now(),
+      };
+      saveQueues(all);
+    } catch(e) { console.error('[Bot] _saveQueue:', e.message); }
   }
 
   getState() {
@@ -230,19 +280,20 @@ class MusicBot {
   _enqueue(track, requestedBy) {
     this.queue.push(track);
     if (!this.playing) { this.currentIdx = this.queue.length-1; this._startTrack(); }
+    this._saveQueue();
     this.broadcast();
     this.io.to(this.room).emit('music:added', { track, requestedBy, queueLength: this.queue.length });
     console.log(`[Bot:${this.channelKey}] ➕ "${track.title}" por ${requestedBy}`);
   }
   pause()  { if(!this.playing||this.paused) return; this.paused=true; if(this.startedAt) this.elapsed+=(Date.now()-this.startedAt)/1000; this._clearTimer(); this.broadcast(); }
   resume() { if(!this.playing||!this.paused) return; this.paused=false; this.startedAt=Date.now(); const t=this.queue[this.currentIdx]; if(t?.duration>0){const r=t.duration-this.elapsed; if(r>0) this._skipTimer=setTimeout(()=>this.skip(),r*1000);} this.broadcast(); }
-  skip()   { this._clearTimer(); if(!this.queue.length) return; const next=this.shuffled?Math.floor(Math.random()*this.queue.length):this.currentIdx+1; if(!this.shuffled&&next>=this.queue.length){this.stop();return;} this.currentIdx=next; this._startTrack(); this.broadcast(); }
-  stop()   { this._clearTimer(); this.playing=false; this.paused=false; this.currentIdx=-1; this.elapsed=0; this.startedAt=null; this.broadcast(); }
+  skip()   { this._clearTimer(); if(!this.queue.length) return; const next=this.shuffled?Math.floor(Math.random()*this.queue.length):this.currentIdx+1; if(!this.shuffled&&next>=this.queue.length){this.stop();return;} this.currentIdx=next; this._startTrack(); this._saveQueue(); this.broadcast(); }
+  stop()   { this._clearTimer(); this.playing=false; this.paused=false; this.currentIdx=-1; this.elapsed=0; this.startedAt=null; this._saveQueue(); this.broadcast(); }
   playAt(socket,{index}){ if(index<0||index>=this.queue.length) return; this._clearTimer(); this.currentIdx=index; this._startTrack(); this.broadcast(); }
-  removeFromQueue(socket,{index}){ if(index<0||index>=this.queue.length) return; const r=this.queue.splice(index,1)[0]; if(index<this.currentIdx) this.currentIdx--; else if(index===this.currentIdx){if(!this.queue.length){this.stop();return;} this.currentIdx=Math.min(this.currentIdx,this.queue.length-1); this._startTrack();} this.broadcast(); }
+  removeFromQueue(socket,{index}){ if(index<0||index>=this.queue.length) return; const r=this.queue.splice(index,1)[0]; if(index<this.currentIdx) this.currentIdx--; else if(index===this.currentIdx){if(!this.queue.length){this.stop();return;} this.currentIdx=Math.min(this.currentIdx,this.queue.length-1); this._startTrack();} this._saveQueue(); this.broadcast(); }
   shuffle()             { this.shuffled=!this.shuffled; this.broadcast(); }
   setVolume(s,{volume}) { this.volume=Math.max(0,Math.min(100,parseInt(volume)||80)); this.broadcast(); }
-  clearQueue()          { this.stop(); this.queue=[]; this.broadcast(); }
+  clearQueue()          { this.stop(); this.queue=[]; this._saveQueue(); this.broadcast(); }
 
   _startTrack() {
     this.playing=true; this.paused=false; this.elapsed=0; this.startedAt=Date.now();
@@ -254,7 +305,7 @@ class MusicBot {
   _fmt(s) { s=Math.floor(s||0); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
   // ── Rotas Express ────────────────────────────────────────
-  static registerRoutes(app, uploadDir) {
+  static async registerRoutes(app, uploadDir) {
     const multer = require('multer');
     const { v4: uuid } = require('uuid');
 
@@ -284,36 +335,60 @@ class MusicBot {
       } catch(err) { res.status(500).json({error:err.message}); }
     });
 
-    // YouTube: resolve stream via Invidious (sem ytdl — evita 429 do YouTube)
-    const INVIDIOUS = [
-      'https://inv.nadeko.net',
-      'https://invidious.nerdvpn.de',
-      'https://invidious.privacydev.net',
-      'https://iv.datura.network',
-      'https://invidious.fdn.fr',
-    ];
+    // YouTube stream via yt-dlp (mais confiável que ytdl-core em servidores)
+    const { execFile, exec } = require('child_process');
+    const { promisify }      = require('util');
+    const execFileAsync      = promisify(execFile);
+
+    // Verifica se yt-dlp está disponível
+    let ytdlpPath = null;
+    try {
+      const { stdout } = await promisify(exec)('which yt-dlp || where yt-dlp');
+      ytdlpPath = stdout.trim().split('\n')[0];
+      console.log('[yt-dlp] encontrado em:', ytdlpPath);
+    } catch {
+      console.warn('[yt-dlp] não encontrado — YouTube pode não funcionar');
+    }
 
     app.get('/api/ytstream', async (req, res) => {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: 'videoId inválido' });
 
-      const fetch = require('node-fetch');
-      for (const instance of INVIDIOUS) {
-        try {
-          const apiUrl = `${instance}/api/v1/videos/${id}?fields=adaptiveFormats`;
-          const data   = await fetch(apiUrl, { timeout: 6000 }).then(r => r.json());
-          const fmts   = (data.adaptiveFormats || [])
-            .filter(f => f.type?.startsWith('audio/'))
-            .sort((a,b) => (parseInt(b.bitrate)||0) - (parseInt(a.bitrate)||0));
-          if (fmts[0]?.url) {
-            console.log(`[YT] stream via ${instance}`);
-            return res.redirect(fmts[0].url);
-          }
-        } catch(e) {
-          console.log(`[YT] ${instance} falhou: ${e.message}`);
+      // Tenta yt-dlp primeiro
+      const dlp = ytdlpPath || 'yt-dlp';
+      try {
+        const { stdout } = await execFileAsync(dlp, [
+          `https://www.youtube.com/watch?v=${id}`,
+          '--get-url',
+          '-f', 'bestaudio[ext=webm]/bestaudio/best',
+          '--no-playlist',
+          '--quiet',
+        ], { timeout: 15000 });
+        const streamUrl = stdout.trim().split('\n')[0];
+        if (streamUrl && streamUrl.startsWith('http')) {
+          console.log(`[yt-dlp] ✅ stream obtido para ${id}`);
+          return res.redirect(streamUrl);
         }
+      } catch(e) {
+        console.warn('[yt-dlp] falhou:', e.message?.slice(0, 100));
       }
-      res.status(503).json({ error: 'YouTube temporariamente indisponível. Tente uma rádio ou MP3.' });
+
+      // Fallback: Invidious
+      const fetch = require('node-fetch');
+      const INVIDIOUS = [
+        'https://inv.nadeko.net',
+        'https://invidious.privacydev.net',
+        'https://iv.datura.network',
+      ];
+      for (const inst of INVIDIOUS) {
+        try {
+          const data = await fetch(`${inst}/api/v1/videos/${id}?fields=adaptiveFormats`, { timeout: 6000 }).then(r => r.json());
+          const fmts = (data.adaptiveFormats || []).filter(f => f.type?.startsWith('audio/')).sort((a,b) => (b.bitrate||0)-(a.bitrate||0));
+          if (fmts[0]?.url) { console.log(`[YT] fallback via ${inst}`); return res.redirect(fmts[0].url); }
+        } catch {}
+      }
+
+      res.status(503).json({ error: 'YouTube indisponível no momento. Use rádio, SoundCloud ou link MP3.' });
     });
 
     app.get('/api/sources', (_,res) => res.json({
