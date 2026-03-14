@@ -1,11 +1,11 @@
 {
   "name": "vozhub",
   "version": "3.3.0",
-  "description": "Plataforma de comunica\u00e7\u00e3o por voz com bot de m\u00fasica colaborativo",
+  "description": "Plataforma de comunicação por voz com bot de música colaborativo",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "build": "bash build.sh"
+    "build": "npm install && (pip3 install yt-dlp --quiet 2>/dev/null || curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp || true)"
   },
   "dependencies": {
     "express": "^4.18.2",
