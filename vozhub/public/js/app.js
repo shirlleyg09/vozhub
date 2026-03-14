@@ -190,6 +190,13 @@ socket.on('error',  ({ msg }) => toast('❌ ' + msg));
 socket.on('kicked', ({ reason }) => { toast('🚫 '+reason); S.connected=false; rtc?.disconnect(); S.users=[]; rAll(); });
 socket.on('voice:peers', async ({ peers }) => { if (rtc) await rtc.connectToPeers(peers); });
 
+// Restaura estado da música ao reconectar (fila preservada no servidor)
+socket.on('music:restore', ({ state }) => {
+  S.music = state;
+  updateMusicUI();
+  toast('🎵 Fila restaurada!');
+});
+
 /* ── Render ────────────────────────────────────────────── */
 function rAll() { rServers(); rChannelPanel(); rStage(); rUsers(); }
 
@@ -409,7 +416,17 @@ function updateMusicUI() {
         if (t.duration > 0) audio.currentTime = Math.max(0, localProg - 1);
       }
       audio.volume = document.getElementById('vol-sl').value / 100;
-      audio.play().catch(e => console.warn('audio play:', e.message));
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise.catch(e => {
+          console.warn('audio play blocked:', e.message);
+          // Mostra botão para o usuário clicar e desbloquear o áudio
+          if (e.name === 'NotAllowedError') {
+            toast('🔊 Clique em qualquer lugar para ativar o áudio');
+            document.addEventListener('click', () => audio.play().catch(()=>{}), { once: true });
+          }
+        });
+      }
     }
   } else if (!m.playing || m.paused) {
     audio.pause();

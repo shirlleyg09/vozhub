@@ -14,7 +14,14 @@ const { MusicBot } = require('./musicBot');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET','POST'] },
+  pingTimeout:  60000,   // 60s — evita desconexão por latência do Render
+  pingInterval: 25000,   // ping a cada 25s
+  transports: ['websocket', 'polling'],
+  upgradeTimeout: 30000,
+  allowEIO3: true,
+});
 const UPLOAD_DIR = path.join(__dirname, '../public/uploads');
 
 // Garante que a pasta de uploads existe (necessário no Render)
@@ -133,7 +140,13 @@ io.on('connection', socket => {
     io.to(room).emit('channel:users', { key, users: [...ch.users.values()], music: ch.musicBot.getState() });
     const peers = [...ch.users.keys()].filter(id => id !== socket.id);
     socket.emit('voice:peers', { peers, key });
-    socket.emit('music:state', ch.musicBot.getState());
+    // Envia estado completo da música ao entrar (inclui fila preservada)
+    const musicState = ch.musicBot.getState();
+    socket.emit('music:state', musicState);
+    // Se tinha música tocando, notifica para o cliente retomar
+    if (musicState.playing && musicState.track) {
+      socket.emit('music:restore', { state: musicState });
+    }
     console.log(`[voice] ${user.name} → ${key}`);
   });
 
