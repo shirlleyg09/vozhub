@@ -475,8 +475,8 @@ function updateSourceBadges() {
   scSt.textContent = S.sources.soundcloud ? '✅ SoundCloud disponível' : '⚠️ SoundCloud inativo no servidor';
 
   const ytSt = document.getElementById('yt-status');
-  ytSt.className = S.sources.youtube ? 'source-status ok' : 'source-status warn';
-  ytSt.textContent = S.sources.youtube ? '✅ YouTube disponível' : '⚠️ YouTube inativo no servidor';
+  ytSt.className = 'source-status ok';
+  ytSt.textContent = '✅ YouTube — busque pelo nome ou cole um link';
 }
 
 function switchTab(btn, tabId) {

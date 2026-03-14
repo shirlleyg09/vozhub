@@ -109,7 +109,7 @@ class MusicBot {
       progress: Math.floor(Math.max(0, progress)),
       queue: this.queue.map((t, i) => ({ ...t, isCurrent: i === this.currentIdx })),
       track, radios: RADIOS,
-      sources: { soundcloud: !!getSC(), youtube: !!(ytdl || ytSearch) },
+      sources: { soundcloud: !!getSC(), youtube: true },
     };
   }
 
@@ -197,22 +197,38 @@ class MusicBot {
 
   // ── YouTube ─────────────────────────────────────────────
   async searchYouTube(query, socket) {
-    if (!ytSearch) {
-      socket.emit('music:yt:results', { results: [], error: 'YouTube indisponível no servidor.' });
-      return;
-    }
     socket.emit('music:searching', { source: 'youtube', query });
+
+    // Tenta yt-search (biblioteca Node)
+    if (ytSearch) {
+      try {
+        const res = await ytSearch(query);
+        const results = (res.videos||[]).slice(0,6).map(v => ({
+          title: v.title, artist: v.author?.name||'YouTube',
+          url: v.url, thumbnail: v.thumbnail||null,
+          duration: v.duration?.seconds||0, durationFmt: v.duration?.timestamp||'?',
+          type:'youtube', emoji:'▶️',
+        }));
+        if (results.length) { socket.emit('music:yt:results', { results }); return; }
+      } catch(e) { console.warn('[YT search] yt-search falhou:', e.message); }
+    }
+
+    // Fallback: busca via Invidious API
     try {
-      const res = await ytSearch(query);
-      const results = (res.videos||[]).slice(0,6).map(v => ({
-        title: v.title, artist: v.author?.name||'YouTube',
-        url: v.url, thumbnail: v.thumbnail||null,
-        duration: v.duration?.seconds||0, durationFmt: v.duration?.timestamp||'?',
+      const fetch = require('node-fetch');
+      const q     = encodeURIComponent(query);
+      const data  = await fetch(`https://inv.nadeko.net/api/v1/search?q=${q}&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails`, { timeout: 8000 }).then(r => r.json());
+      const results = (Array.isArray(data) ? data : []).slice(0,6).map(v => ({
+        title: v.title, artist: v.author||'YouTube',
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        thumbnail: v.videoThumbnails?.[0]?.url || null,
+        duration: v.lengthSeconds||0,
+        durationFmt: v.lengthSeconds ? `${Math.floor(v.lengthSeconds/60)}:${String(v.lengthSeconds%60).padStart(2,'0')}` : '?',
         type:'youtube', emoji:'▶️',
       }));
       socket.emit('music:yt:results', { results });
-    } catch (err) {
-      socket.emit('music:yt:results', { results: [], error: 'Erro YouTube: '+err.message });
+    } catch(e) {
+      socket.emit('music:yt:results', { results: [], error: 'Busca YouTube indisponível. Cole um link direto.' });
     }
   }
 
@@ -392,8 +408,11 @@ class MusicBot {
     });
 
     app.get('/api/sources', (_,res) => res.json({
-      radio:true, mp3:true, url:true,
-      soundcloud:!!getSC(), youtube:!!(ytdl||ytSearch),
+      radio:      true,
+      mp3:        true,
+      url:        true,
+      soundcloud: !!getSC(),
+      youtube:    true, // busca sempre disponível via yt-search, stream via yt-dlp
     }));
   }
 }
