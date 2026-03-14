@@ -5,7 +5,6 @@
 
 const express      = require('express');
 const http         = require('http');
-const https        = require('https');
 const fs           = require('fs');
 const { Server }   = require('socket.io');
 const cors         = require('cors');
@@ -13,23 +12,16 @@ const path         = require('path');
 const { v4: uuid } = require('uuid');
 const { MusicBot } = require('./musicBot');
 
-const app = express();
-
-// ── HTTPS com certificado mkcert ─────────────────────────
-// Coloque cert.crt e cert.key na pasta raiz do projeto (vozhub/)
-const certFile = path.join(__dirname, '..', 'cert.crt');
-const keyFile  = path.join(__dirname, '..', 'cert.key');
-
-let server, isHttps = false;
-if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
-  server  = https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, app);
-  isHttps = true;
-} else {
-  server = http.createServer(app);
-}
-
-const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
 const UPLOAD_DIR = path.join(__dirname, '../public/uploads');
+
+// Garante que a pasta de uploads existe (necessário no Render)
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log('[Init] Pasta uploads criada:', UPLOAD_DIR);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -275,17 +267,11 @@ function getLocalIP() {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-  const proto = isHttps ? 'https' : 'http';
-  const ip    = getLocalIP();
+  const ip = getLocalIP();
   console.log('');
   console.log('  🎙️  VozHub rodando!');
   console.log('');
-  console.log(`  Local:   ${proto}://localhost:${PORT}`);
-  console.log(`  iPhone:  ${proto}://${ip}:${PORT}   ← use este no celular`);
-  if (!isHttps) {
-    console.log('');
-    console.log('  ⚠️  Para microfone no iPhone, rode em HTTPS:');
-    console.log('     Coloque cert.crt e cert.key na pasta vozhub/');
-  }
+  console.log(`  Local:   http://localhost:${PORT}`);
+  console.log(`  Rede:    http://${ip}:${PORT}`);
   console.log('');
 });
