@@ -7,10 +7,10 @@
 const path = require('path');
 
 // Dependências opcionais
-let ytdl, ytSearch, SC;
-try { ytdl    = require('@distube/ytdl-core'); } catch { ytdl    = null; }
+let ytSearch, SC;
 try { ytSearch = require('yt-search');         } catch { ytSearch = null; }
 try { SC      = require('soundcloud-scraper'); } catch { SC       = null; }
+const ytdl = null; // ytdl removido — YouTube bloqueia IPs de data center (429)
 
 function getSC() {
   if (!SC) return null;
@@ -284,42 +284,36 @@ class MusicBot {
       } catch(err) { res.status(500).json({error:err.message}); }
     });
 
-    // YouTube stream proxy — tenta ytdl primeiro, depois Invidious
+    // YouTube: resolve stream via Invidious (sem ytdl — evita 429 do YouTube)
     const INVIDIOUS = [
       'https://inv.nadeko.net',
       'https://invidious.nerdvpn.de',
       'https://invidious.privacydev.net',
       'https://iv.datura.network',
+      'https://invidious.fdn.fr',
     ];
 
     app.get('/api/ytstream', async (req, res) => {
-      const { url, id } = req.query;
-      const videoId = id || (url ? (url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)||[])[1] : null);
-      if (!videoId) return res.status(400).json({ error: 'videoId inválido' });
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: 'videoId inválido' });
 
-      // Tenta ytdl primeiro
-      if (ytdl) {
-        try {
-          const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-          res.setHeader('Content-Type', 'audio/mpeg');
-          ytdl(ytUrl, { filter:'audioonly', quality:'lowestaudio' })
-            .pipe(res).on('error', () => {});
-          return;
-        } catch {}
-      }
-
-      // Fallback: Invidious (tenta cada instância)
       const fetch = require('node-fetch');
       for (const instance of INVIDIOUS) {
         try {
-          const apiUrl  = `${instance}/api/v1/videos/${videoId}`;
-          const data    = await fetch(apiUrl, { timeout: 5000 }).then(r => r.json());
-          const formats = (data.adaptiveFormats || []).filter(f => f.type?.includes('audio'));
-          const best    = formats.sort((a,b) => (b.bitrate||0)-(a.bitrate||0))[0];
-          if (best?.url) { res.redirect(best.url); return; }
-        } catch {}
+          const apiUrl = `${instance}/api/v1/videos/${id}?fields=adaptiveFormats`;
+          const data   = await fetch(apiUrl, { timeout: 6000 }).then(r => r.json());
+          const fmts   = (data.adaptiveFormats || [])
+            .filter(f => f.type?.startsWith('audio/'))
+            .sort((a,b) => (parseInt(b.bitrate)||0) - (parseInt(a.bitrate)||0));
+          if (fmts[0]?.url) {
+            console.log(`[YT] stream via ${instance}`);
+            return res.redirect(fmts[0].url);
+          }
+        } catch(e) {
+          console.log(`[YT] ${instance} falhou: ${e.message}`);
+        }
       }
-      res.status(503).json({ error: 'Nenhuma fonte de stream disponível para este vídeo.' });
+      res.status(503).json({ error: 'YouTube temporariamente indisponível. Tente uma rádio ou MP3.' });
     });
 
     app.get('/api/sources', (_,res) => res.json({

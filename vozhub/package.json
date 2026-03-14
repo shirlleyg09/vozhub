@@ -1,6 +1,6 @@
 {
   "name": "vozhub",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Plataforma de comunicação por voz com bot de música colaborativo",
   "main": "server/index.js",
   "scripts": {
@@ -14,7 +14,6 @@
     "uuid": "^9.0.0",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
-    "@distube/ytdl-core": "^4.16.8",
     "yt-search": "^2.10.4",
     "soundcloud-scraper": "^5.0.2"
   },
