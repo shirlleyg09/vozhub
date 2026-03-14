@@ -7,10 +7,15 @@
 const path = require('path');
 
 // Dependências opcionais
-let ytdl, ytSearch, scdl;
+let ytdl, ytSearch, SC;
 try { ytdl    = require('@distube/ytdl-core'); } catch { ytdl    = null; }
 try { ytSearch = require('yt-search');         } catch { ytSearch = null; }
-try { scdl    = require('soundcloud-downloader').default; } catch { scdl = null; }
+try { SC      = require('soundcloud-scraper'); } catch { SC       = null; }
+
+function getSC() {
+  if (!SC) return null;
+  try { return new SC.Client(); } catch { return null; }
+}
 
 const RADIOS = [
   { id:'lofi1',     name:'Lofi Hip Hop Radio',   emoji:'🎧', url:'https://streams.ilovemusic.de/iloveradio17.mp3',                 genre:'Lo-fi'     },
@@ -46,7 +51,7 @@ class MusicBot {
       progress: Math.floor(Math.max(0, progress)),
       queue: this.queue.map((t, i) => ({ ...t, isCurrent: i === this.currentIdx })),
       track, radios: RADIOS,
-      sources: { soundcloud: !!scdl, youtube: !!(ytdl || ytSearch) },
+      sources: { soundcloud: !!getSC(), youtube: !!(ytdl || ytSearch) },
     };
   }
 
@@ -85,16 +90,18 @@ class MusicBot {
 
   // ── SoundCloud ──────────────────────────────────────────
   async searchSoundCloud(query, socket) {
-    if (!scdl) {
+    const client = getSC();
+    if (!client) {
       socket.emit('music:sc:results', { results: [], error: 'SoundCloud indisponível no servidor.' });
       return;
     }
     socket.emit('music:searching', { source: 'soundcloud', query });
     try {
-      const res = await scdl.search({ query, limit: 8, resourceType: 'tracks' });
-      const results = (res.collection || []).map(t => ({
+      const res     = await client.search(query, 'track');
+      const results = (res.collection || []).slice(0, 8).map(t => ({
         title: t.title, artist: t.user?.username || 'SoundCloud',
-        url: t.permalink_url, thumbnail: t.artwork_url,
+        url: t.permalink_url || t.url,
+        thumbnail: t.artwork_url || null,
         duration: Math.floor((t.duration||0)/1000),
         durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
         type:'soundcloud', emoji:'☁️',
@@ -106,22 +113,22 @@ class MusicBot {
   }
 
   async addSoundCloud({ url, title, artist, duration, thumbnail, requestedBy }, socket) {
-    if (!scdl) { socket?.emit('music:error', { msg: 'SoundCloud indisponível.' }); return; }
+    const client = getSC();
+    if (!client) { socket?.emit('music:error', { msg: 'SoundCloud indisponível.' }); return; }
     try {
-      // Tenta resolver stream URL diretamente
-      const streamUrl = `/api/scstream?url=${encodeURIComponent(url)}`;
-      // Busca metadados se não tiver
       if (!title) {
         try {
-          const info = await scdl.getInfo(url);
-          title     = info.title;
-          artist    = info.user?.username || 'SoundCloud';
-          duration  = Math.floor((info.duration||0)/1000);
-          thumbnail = info.artwork_url;
+          const song = await client.getSong(url);
+          title     = song.title;
+          artist    = song.author?.name || 'SoundCloud';
+          duration  = Math.floor((song.duration||0)/1000);
+          thumbnail = song.thumbnail;
         } catch {}
       }
+      const streamUrl = `/api/scstream?url=${encodeURIComponent(url)}`;
       this._enqueue({ id:`sc-${Date.now()}`, type:'soundcloud',
-        title: title||'SoundCloud Track', artist:(artist||'SoundCloud')+' · por '+requestedBy,
+        title: title||'SoundCloud Track',
+        artist:(artist||'SoundCloud')+' · por '+requestedBy,
         emoji:'☁️', url, streamUrl,
         duration: duration||0, durationFmt: this._fmt(duration||0),
         requestedBy, thumbnail: thumbnail||null, isLive: false }, requestedBy);
@@ -258,11 +265,12 @@ class MusicBot {
     // SoundCloud stream proxy
     app.get('/api/scstream', async (req,res) => {
       const { url } = req.query;
-      if(!scdl||!url) return res.status(400).json({error:'SoundCloud indisponível ou URL inválida'});
+      const client  = getSC();
+      if(!client||!url) return res.status(400).json({error:'SoundCloud indisponível ou URL inválida'});
       try {
-        const stream = await scdl.download(url);
-        res.setHeader('Content-Type','audio/mpeg');
-        stream.pipe(res).on('error',()=>res.end());
+        const song      = await client.getSong(url);
+        const streamUrl = await song.downloadProgressive();
+        res.redirect(streamUrl);
       } catch(err) { res.status(500).json({error:err.message}); }
     });
 
@@ -278,7 +286,7 @@ class MusicBot {
 
     app.get('/api/sources', (_,res) => res.json({
       radio:true, mp3:true, url:true,
-      soundcloud:!!scdl, youtube:!!(ytdl||ytSearch),
+      soundcloud:!!getSC(), youtube:!!(ytdl||ytSearch),
     }));
   }
 }
