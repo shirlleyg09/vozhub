@@ -28,6 +28,14 @@ class WebRTCManager {
     this._bindSocketEvents();
   }
 
+  // ── Ganho do microfone ─────────────────────────────────
+  setMicVolume(value) {
+    // value: 0.0 a 2.0 (1.0 = normal, 2.0 = dobro do volume)
+    if (this._micGain) {
+      this._micGain.gain.setTargetAtTime(value, this._micGain.context.currentTime, 0.01);
+    }
+  }
+
   // ── Capturar microfone ──────────────────────────────────
   async initMic(deviceId = null) {
     try {
@@ -55,7 +63,12 @@ class WebRTCManager {
       const source      = this.audioContext.createMediaStreamSource(this.localStream);
       this.analyser     = this.audioContext.createAnalyser();
       this.analyser.fftSize = 512;
-      source.connect(this.analyser);
+
+      // Nó de ganho para controlar volume do microfone
+      this._micGain = this.audioContext.createGain();
+      this._micGain.gain.value = 1.0;
+      source.connect(this._micGain);
+      this._micGain.connect(this.analyser);
 
       const data = new Uint8Array(this.analyser.frequencyBinCount);
       let speaking = false;

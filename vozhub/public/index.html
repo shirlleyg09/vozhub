@@ -54,8 +54,16 @@
       <div class="up-ctrls">
         <button class="up-btn" id="mic-btn" title="Microfone (M)" onclick="toggleMic()">🎤</button>
         <button class="up-btn" id="deaf-btn" title="Silenciar (D)" onclick="toggleDeaf()">🔊</button>
+        <button class="up-btn" title="Volume do microfone" onclick="toggleMicVol()">🎚️</button>
         <button class="up-btn" title="Configurações" onclick="openSettings()">⚙️</button>
         <button class="up-btn" title="Sair (logout)" onclick="logout()" style="color:var(--red)">🚪</button>
+      </div>
+      <!-- Painel de volume do mic (aparece ao clicar em 🎚️) -->
+      <div class="mic-vol-panel" id="mic-vol-panel" style="display:none">
+        <span class="mvc-label">🎤 Volume do mic</span>
+        <input class="mvc-slider" type="range" min="0" max="200" value="100" id="mic-vol-sl"
+          oninput="setMicVolume(this.value)">
+        <span class="mvc-val" id="mic-vol-val">100%</span>
       </div>
     </div>
   </div>

@@ -17,12 +17,24 @@ const S = {
 /* ── Sons de UI (Web Audio API — sem arquivos externos) ── */
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let _actx = null;
-function getACtx() { if (!_actx) _actx = new AudioCtx(); return _actx; }
+
+function getACtx() {
+  if (!_actx) _actx = new AudioCtx();
+  // Desbloqueia o contexto se estiver suspenso (política do navegador)
+  if (_actx.state === 'suspended') _actx.resume();
+  return _actx;
+}
+
+// Desbloqueia AudioContext no primeiro clique/toque do usuário
+document.addEventListener('click',     () => getACtx(), { once: true });
+document.addEventListener('touchstart', () => getACtx(), { once: true });
+document.addEventListener('keydown',   () => getACtx(), { once: true });
 
 function playSound(type) {
   try {
     const ctx = getACtx();
-    const g   = ctx.createGain();
+    if (ctx.state === 'suspended') { ctx.resume().then(() => playSound(type)); return; }
+    const g = ctx.createGain();
     g.connect(ctx.destination);
     if (type === 'join') {
       // Dois tons subindo — "ding dong" positivo
@@ -30,23 +42,24 @@ function playSound(type) {
         const o = ctx.createOscillator();
         o.type = 'sine'; o.frequency.value = freq;
         o.connect(g);
-        g.gain.setValueAtTime(0, ctx.currentTime + i * 0.18);
-        g.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.18 + 0.02);
-        g.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.18 + 0.22);
+        g.gain.setValueAtTime(0,    ctx.currentTime + i * 0.18);
+        g.gain.linearRampToValueAtTime(0.2, ctx.currentTime + i * 0.18 + 0.02);
+        g.gain.linearRampToValueAtTime(0,   ctx.currentTime + i * 0.18 + 0.22);
         o.start(ctx.currentTime + i * 0.18);
-        o.stop(ctx.currentTime + i * 0.18 + 0.25);
+        o.stop( ctx.currentTime + i * 0.18 + 0.25);
       });
     } else {
-      // Tom descendente — "dong" suave de saída
+      // Tom descendente — saída
       const o = ctx.createOscillator();
-      o.type = 'sine'; o.frequency.setValueAtTime(520, ctx.currentTime);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(520, ctx.currentTime);
       o.frequency.linearRampToValueAtTime(300, ctx.currentTime + 0.3);
       o.connect(g);
-      g.gain.setValueAtTime(0.15, ctx.currentTime);
+      g.gain.setValueAtTime(0.18, ctx.currentTime);
       g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35);
       o.start(); o.stop(ctx.currentTime + 0.4);
     }
-  } catch {}
+  } catch(e) { console.warn('playSound:', e.message); }
 }
 
 /* ── Login persistente (localStorage) ────────────────── */
@@ -297,6 +310,18 @@ function logout() {
   clearSession();
   leaveVoice();
   setTimeout(() => window.location.reload(), 300);
+}
+
+function toggleMicVol() {
+  const panel = document.getElementById('mic-vol-panel');
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+}
+
+function setMicVolume(val) {
+  const pct = parseInt(val);
+  document.getElementById('mic-vol-val').textContent = pct + '%';
+  // 0–100% = 0.0–1.0, 100–200% = 1.0–2.0 (boost)
+  if (rtc) rtc.setMicVolume(pct / 100);
 }
 
 function toggleMic() {

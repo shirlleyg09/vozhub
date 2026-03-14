@@ -152,34 +152,60 @@ class MusicBot {
   }
 
   async addYouTube({ url, query, requestedBy }, socket) {
-    if (!ytdl && !ytSearch) {
+    if (!ytSearch) {
       socket?.emit('music:error', { msg: 'YouTube indisponível. Use rádio, MP3 ou link direto.' });
       return;
     }
     try {
-      let track;
-      if (url && ytdl?.validateURL(url)) {
-        const info = await ytdl.getBasicInfo(url);
-        const v    = info.videoDetails;
-        track = { id: v.videoId, type:'youtube', emoji:'▶️',
-          title: v.title, artist: v.author?.name||'YouTube',
-          url, streamUrl:`/api/ytstream?url=${encodeURIComponent(url)}`,
-          duration: parseInt(v.lengthSeconds)||0,
-          durationFmt: this._fmt(parseInt(v.lengthSeconds)||0),
-          requestedBy, thumbnail: v.thumbnails?.[0]?.url||null };
-      } else if (query && ytSearch) {
+      let videoId, title, artist, duration, durationFmt, thumbnail, videoUrl;
+
+      // Se recebeu URL, extrai o videoId
+      if (url) {
+        const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        videoId = m ? m[1] : null;
+      }
+
+      // Busca metadados via yt-search
+      if (videoId && !title) {
+        try {
+          const res = await ytSearch({ videoId });
+          const v   = res.videos?.[0] || res;
+          title       = v.title;
+          artist      = v.author?.name || 'YouTube';
+          duration    = v.duration?.seconds || 0;
+          durationFmt = v.duration?.timestamp || '?';
+          thumbnail   = v.thumbnail || null;
+          videoUrl    = url;
+        } catch {}
+      } else if (query) {
         const res = await ytSearch(query);
         const v   = (res.videos||[])[0];
         if (!v) { socket?.emit('music:error', { msg: 'Nenhum resultado no YouTube.' }); return; }
-        track = { id: v.videoId, type:'youtube', emoji:'▶️',
-          title: v.title, artist: v.author?.name||'YouTube',
-          url: v.url, streamUrl:`/api/ytstream?url=${encodeURIComponent(v.url)}`,
-          duration: v.duration?.seconds||0, durationFmt: v.duration?.timestamp||'?',
-          requestedBy, thumbnail: v.thumbnail||null };
+        videoId     = v.videoId;
+        title       = v.title;
+        artist      = v.author?.name || 'YouTube';
+        duration    = v.duration?.seconds || 0;
+        durationFmt = v.duration?.timestamp || '?';
+        thumbnail   = v.thumbnail || null;
+        videoUrl    = v.url;
       }
-      if (track) this._enqueue(track, requestedBy);
+
+      if (!videoId) { socket?.emit('music:error', { msg: 'Não foi possível identificar o vídeo.' }); return; }
+
+      // Stream via Invidious (instância pública — não precisa de ytdl)
+      const invidiousStream = `https://inv.nadeko.net/latest_version?id=${videoId}&itag=140`;
+
+      this._enqueue({
+        id: videoId, type: 'youtube', emoji: '▶️',
+        title: title || 'YouTube Video',
+        artist: (artist || 'YouTube') + ' · por ' + requestedBy,
+        url: videoUrl, streamUrl: invidiousStream,
+        duration, durationFmt, requestedBy,
+        thumbnail: thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+        isLive: false,
+      }, requestedBy);
     } catch (err) {
-      socket?.emit('music:error', { msg: 'Erro YouTube: '+err.message });
+      socket?.emit('music:error', { msg: 'Erro YouTube: ' + err.message });
     }
   }
 

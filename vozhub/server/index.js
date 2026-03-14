@@ -100,6 +100,13 @@ function leaveChannel(socket, srvId, chId) {
   const user = ch.users.get(socket.id);
   ch.users.delete(socket.id);
   socket.leave(roomName(srvId, chId));
+
+  // Se canal ficou vazio, pausa a música automaticamente
+  if (ch.users.size === 0 && ch.musicBot.playing) {
+    ch.musicBot.pause();
+    console.log(`[Bot] Canal ${key} vazio — música pausada`);
+  }
+
   io.to(roomName(srvId, chId)).emit('channel:users', {
     key, users: [...ch.users.values()], music: ch.musicBot.getState()
   });

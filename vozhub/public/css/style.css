@@ -276,3 +276,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 @media(max-width:900px){.pu{display:none}}
 @media(max-width:640px){.pc{width:180px}.mb-info{width:110px}}
 @media(max-width:480px){.pc{display:none}.ss{width:56px}}
+
+/* ── Mic volume panel ──────────────────────────────────── */
+.mic-vol-panel{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-raised);border-top:1px solid var(--border);flex-shrink:0}
+.mvc-label{font-size:.75rem;color:var(--t3);flex-shrink:0}
+.mvc-slider{-webkit-appearance:none;flex:1;height:4px;background:var(--bg-active);border-radius:2px;outline:none;cursor:pointer}
+.mvc-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--blue);cursor:pointer;box-shadow:0 0 6px var(--glow-blue)}
+.mvc-val{font-size:.72rem;color:var(--blue);font-family:'JetBrains Mono',monospace;flex-shrink:0;width:36px;text-align:right}
