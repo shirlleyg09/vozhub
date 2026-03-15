@@ -12,16 +12,6 @@ const path  = require('path');
 const fs    = require('fs');
 const fetch = require('node-fetch');
 
-const YT_COOKIES_FILE = process.env.YT_COOKIES_FILE || null;
-
-// ── Cookie do YouTube (Render ENV) ──────────────────────
-
-if (YT_COOKIES_FILE) {
-  console.log(`[AudioStream] Usando cookies do YouTube: ${YT_COOKIES_FILE}`);
-} else {
-  console.log('[AudioStream] Nenhum cookie do YouTube configurado');
-}
-
 // ── Detecta ferramentas disponíveis ──────────────────────
 function detectTool(names) {
   for (const name of names) {
@@ -34,6 +24,24 @@ function detectTool(names) {
 const FFMPEG  = detectTool(['ffmpeg']);
 const YTDLP   = detectTool(['yt-dlp', 'yt_dlp']);
 console.log(`[AudioStream] ffmpeg: ${FFMPEG||'NÃO ENCONTRADO'} | yt-dlp: ${YTDLP||'NÃO ENCONTRADO'}`);
+
+// Salva cookies no disco na inicialização (evita reescrever a cada request)
+let COOKIES_PATH = null;
+(function initCookies() {
+  const cookiesContent = process.env.YT_COOKIES_FILE;
+  if (!cookiesContent) {
+    console.log('[AudioStream] YT_COOKIES_FILE não definido — YouTube pode bloquear');
+    return;
+  }
+  try {
+    COOKIES_PATH = '/tmp/yt_cookies.txt';
+    fs.writeFileSync(COOKIES_PATH, cookiesContent, 'utf8');
+    const lines = cookiesContent.split('\n').filter(l => l && !l.startsWith('#')).length;
+    console.log(`[AudioStream] ✅ Cookies do YouTube carregados (${lines} entradas)`);
+  } catch(e) {
+    console.error('[AudioStream] Erro ao salvar cookies:', e.message);
+  }
+})();
 
 // ── Instâncias Invidious ──────────────────────────────────
 const INVIDIOUS = [
@@ -106,21 +114,11 @@ class AudioStream {
       if (YTDLP) {
         try {
           const { stdout } = await new Promise((res, rej) => {
-           const ytArgs = [
-  `https://www.youtube.com/watch?v=${videoId}`,
-  '--get-url',
-  '-f', 'bestaudio[ext=webm]/bestaudio/best',
-  '--no-playlist',
-  '--quiet',
-  '--no-warnings'
-];
-
-// adiciona cookies se existir
-if (YT_COOKIES_FILE) {
-  ytArgs.push('--cookies', YT_COOKIES_FILE);
-}
-
-const p = spawn(YTDLP, ytArgs);
+            const p = spawn(YTDLP, [
+              `https://www.youtube.com/watch?v=${videoId}`,
+              '--get-url', '-f', 'bestaudio[ext=webm]/bestaudio/best',
+              '--no-playlist', '--quiet', '--no-warnings',
+            ]);
             let out = '', err = '';
             p.stdout.on('data', d => out += d);
             p.stderr.on('data', d => err += d);
