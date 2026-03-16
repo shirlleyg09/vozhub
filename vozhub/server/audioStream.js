@@ -25,19 +25,32 @@ const FFMPEG  = detectTool(['ffmpeg']);
 const YTDLP   = detectTool(['yt-dlp', 'yt_dlp']);
 console.log(`[AudioStream] ffmpeg: ${FFMPEG||'NÃO ENCONTRADO'} | yt-dlp: ${YTDLP||'NÃO ENCONTRADO'}`);
 
-// Salva cookies no disco na inicialização (evita reescrever a cada request)
+// Salva cookies no disco na inicialização
 let COOKIES_PATH = null;
 (function initCookies() {
+  // Diagnóstico: lista todas as env vars relacionadas
+  const envKeys = Object.keys(process.env).filter(k => k.includes('YT') || k.includes('COOKIE'));
+  console.log('[AudioStream] Env vars YT/COOKIE encontradas:', envKeys.length ? envKeys : 'nenhuma');
+
   const cookiesContent = process.env.YT_COOKIES_FILE;
   if (!cookiesContent) {
-    console.log('[AudioStream] YT_COOKIES_FILE não definido — YouTube pode bloquear');
+    console.warn('[AudioStream] ⚠️  YT_COOKIES_FILE não definido!');
+    console.warn('[AudioStream] No Render: Settings → Environment → adicione YT_COOKIES_FILE');
     return;
   }
+
+  console.log(`[AudioStream] YT_COOKIES_FILE encontrado, tamanho: ${cookiesContent.length} chars`);
+
   try {
     COOKIES_PATH = '/tmp/yt_cookies.txt';
-    fs.writeFileSync(COOKIES_PATH, cookiesContent, 'utf8');
-    const lines = cookiesContent.split('\n').filter(l => l && !l.startsWith('#')).length;
-    console.log(`[AudioStream] ✅ Cookies do YouTube carregados (${lines} entradas)`);
+    // Garante que o conteúdo tem quebras de linha corretas
+    const normalized = cookiesContent.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+    fs.writeFileSync(COOKIES_PATH, normalized, 'utf8');
+    const lines = normalized.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
+    console.log(`[AudioStream] ✅ Cookies salvos em ${COOKIES_PATH} (${lines} domínios/cookies)`);
+    // Mostra primeiras linhas para debug
+    const preview = normalized.split('\n').slice(0,3).join(' | ');
+    console.log(`[AudioStream] Preview: ${preview.slice(0,100)}`);
   } catch(e) {
     console.error('[AudioStream] Erro ao salvar cookies:', e.message);
   }
