@@ -181,8 +181,12 @@ socket.on('music:state', state => {
   if (document.getElementById('mo-queue').classList.contains('open')) renderQueue();
 });
 
-socket.on('music:added',    ({ track, requestedBy }) => {
-  toast(`🎵 ${requestedBy} adicionou: ${track.title}`);
+socket.on('music:added', ({ track, requestedBy, playingNow, position }) => {
+  if (playingNow) {
+    toast(`▶️ Tocando agora: ${track.title}`);
+  } else {
+    toast(`📋 #${position} na fila: ${track.title} — por ${requestedBy}`);
+  }
   if (document.getElementById('mo-queue').classList.contains('open')) renderQueue();
 });
 socket.on('music:error',    ({ msg }) => toast('❌ ' + msg));
@@ -349,11 +353,17 @@ function toggleMic() {
 }
 
 function toggleDeaf() {
-  S.deafOn = !S.deafOn; rtc?.setDeaf(S.deafOn);
+  S.deafOn = !S.deafOn;
+  rtc?.setDeaf(S.deafOn);
+  // Também silencia a música quando surdo
+  const audio = document.getElementById('music-audio');
+  if (audio) audio.muted = S.deafOn;
+  window._botAudio?.mute(S.deafOn);
   const b = document.getElementById('deaf-btn');
-  b.textContent = S.deafOn?'🔇':'🔊'; b.classList.toggle('red', S.deafOn);
+  b.textContent = S.deafOn ? '🔇' : '🔊';
+  b.classList.toggle('red', S.deafOn);
   socket.emit('audio:toggle', { deafOn: S.deafOn });
-  toast(S.deafOn?'🔇 Som desativado':'🔊 Som ativado');
+  toast(S.deafOn ? '🔇 Som desativado (você não ouve ninguém)' : '🔊 Som ativado');
 }
 
 document.addEventListener('keydown', e => {
@@ -364,7 +374,11 @@ document.addEventListener('keydown', e => {
 
 /* ── Music Bar ─────────────────────────────────────────── */
 function sendMusicEv(ev, data={}) {
-  if (!S.connected) { toast('⚠️ Entre em um canal de voz primeiro'); return; }
+  // Controles de música funcionam se estiver conectado OU se houver música tocando
+  if (!S.connected && !S.music?.playing) {
+    toast('⚠️ Entre em um canal de voz primeiro');
+    return;
+  }
   socket.emit(ev, data);
 }
 
@@ -392,11 +406,11 @@ function updateMusicUI() {
     clearInterval(progIv); audio.pause(); return;
   }
   const t = m.track;
-  document.getElementById('mb-ttl').textContent  = t.title;
-  document.getElementById('mb-art').textContent  = (t.isLive?'🔴 ':'')+(t.artist||'')+(t.requestedBy?' · '+t.requestedBy:'');
-  document.getElementById('mb-dur').textContent  = t.isLive?'🔴 Ao vivo':fmt(t.duration||0);
-  document.getElementById('play-btn').textContent = (m.playing&&!m.paused)?'⏸':'▶';
-  document.getElementById('shuf-btn').style.color = m.shuffled?'var(--green)':'';
+  document.getElementById('mb-ttl').textContent   = t.title;
+  document.getElementById('mb-art').textContent   = (t.artist||'') + (t.requestedBy ? ' · por '+t.requestedBy : '');
+  document.getElementById('mb-dur').textContent   = t.isLive ? '🔴 Ao vivo' : fmt(t.duration||0);
+  document.getElementById('play-btn').textContent = (m.playing && !m.paused) ? '⏸' : '▶';
+  document.getElementById('shuf-btn').style.color = m.shuffled ? 'var(--green)' : '';
   if (t.thumbnail) {
     th.innerHTML = `<img src="${t.thumbnail}" alt="" onerror="this.parentElement.textContent='${t.emoji||'🎵'}'">`;
   } else { th.textContent = t.emoji||'🎵'; }
@@ -406,10 +420,29 @@ function updateMusicUI() {
   if (m.playing&&!m.paused&&t.duration>0) {
     progIv = setInterval(() => { localProg=Math.min(localProg+.25, t.duration); updProg(); }, 250);
   }
-  // Áudio gerenciado pelo BotAudioPlayer (chunks do servidor)
-  // O elemento <audio> é usado como fallback quando ffmpeg não está disponível
-  if (!m.playing || m.paused) {
+  // Tocar áudio — rádios e links tocam direto no cliente
+  // YouTube/SC vai via BotAudioPlayer (chunks do servidor quando ffmpeg disponível)
+  const streamUrl = t.streamUrl || t.url || '';
+  if (m.playing && !m.paused && streamUrl && (t.type === 'radio' || t.type === 'url' || t.type === 'mp3')) {
+    if (audio.dataset.url !== streamUrl) {
+      audio.dataset.url = streamUrl;
+      audio.preload = t.isLive ? 'none' : 'auto';
+      audio.src = streamUrl;
+      audio.volume = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
+      audio.muted  = S.localMuted;
+      audio.play().catch(e => {
+        if (e.name === 'NotAllowedError') {
+          toast('🔊 Clique em qualquer lugar para ativar o áudio');
+          document.addEventListener('click', () => {
+            window._botAudio?.unlock();
+            audio.play().catch(()=>{});
+          }, { once: true });
+        }
+      });
+    }
+  } else if (!m.playing || m.paused) {
     audio.pause();
+    if (!m.playing) { audio.src = ''; audio.dataset.url = ''; }
   }
 }
 
@@ -421,10 +454,16 @@ function updProg() {
 }
 
 function setLocalVol(v) {
-  const vol = v / 100;
-  document.getElementById('music-audio').volume = Math.min(1, vol);
-  document.getElementById('vol-ic').textContent = v==0?'🔇':v<40?'🔉':'🔈';
+  const vol = parseInt(v) / 100;
+  // Controla elemento audio (rádios diretas)
+  const audio = document.getElementById('music-audio');
+  if (audio) { audio.volume = Math.min(1, vol); audio.muted = (vol === 0); }
+  // Controla BotAudioPlayer (YouTube/SC via servidor)
   window._botAudio?.setVolume(vol);
+  // Atualiza ícone
+  document.getElementById('vol-ic').textContent = vol === 0 ? '🔇' : vol < 0.4 ? '🔉' : '🔈';
+  // Se aumentou volume, desmuta
+  if (vol > 0) S.localMuted = false;
 }
 
 function toggleMuteLocal() {
@@ -476,13 +515,18 @@ function renderRadios(filter='') {
   const list = filter
     ? RADIOS.filter(r => r.name.toLowerCase().includes(filter.toLowerCase()) || r.genre.toLowerCase().includes(filter.toLowerCase()))
     : RADIOS;
-  if (!list.length) { grid.innerHTML = '<div style="color:var(--t3);padding:20px;text-align:center">Nenhuma rádio encontrada</div>'; return; }
+  if (!list.length) {
+    grid.innerHTML = '<div style="color:var(--t3);padding:20px;text-align:center">Nenhuma rádio encontrada</div>';
+    return;
+  }
   list.forEach(r => {
     const card = document.createElement('div');
     card.className = 'radio-card'+(cur===r.url?' playing':'');
     card.innerHTML = `<span class="rc-emoji">${r.emoji}</span>
-      <div class="rc-info"><div class="rc-name">${r.name}</div>
-      <div class="rc-genre">${r.genre} <span class="rc-live">● AO VIVO</span></div></div>`;
+      <div class="rc-info">
+        <div class="rc-name">${r.name}</div>
+        <div class="rc-genre">${r.genre} <span class="rc-live">● AO VIVO</span></div>
+      </div>`;
     card.onclick = () => {
       if (!S.connected) { toast('⚠️ Entre em um canal primeiro'); return; }
       socket.emit('music:add:radio', { radioId: r.id });
@@ -492,7 +536,33 @@ function renderRadios(filter='') {
   });
 }
 
-document.getElementById('radio-filter').addEventListener('input', e => renderRadios(e.target.value));
+// Busca rádios no Radio Browser ao digitar
+let _radioSearchTimer = null;
+document.getElementById('radio-filter').addEventListener('input', e => {
+  const q = e.target.value.trim();
+  clearTimeout(_radioSearchTimer);
+  if (!q) { renderRadios(); return; }
+  // Filtra locais primeiro (imediato)
+  renderRadios(q);
+  // Busca no Radio Browser após 600ms
+  _radioSearchTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch(`/api/radios/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.length) {
+        // Adiciona resultados que não estão na lista local
+        const extra = data.filter(r => !RADIOS.find(l => l.url === r.url));
+        if (extra.length) {
+          RADIOS = [...RADIOS.filter(r =>
+            r.name.toLowerCase().includes(q.toLowerCase()) ||
+            r.genre.toLowerCase().includes(q.toLowerCase())
+          ), ...extra];
+          renderRadios(q);
+        }
+      }
+    } catch {}
+  }, 600);
+});
 
 /* ── Upload MP3 ────────────────────────────────────────── */
 function handleFileSelect(e) { if (e.target.files[0]) uploadFile(e.target.files[0]); }

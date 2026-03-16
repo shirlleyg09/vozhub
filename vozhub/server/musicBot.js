@@ -38,28 +38,87 @@ function getSC() {
   try { return new SC.Client(); } catch { return null; }
 }
 
-const RADIOS = [
-  // Gospel — múltiplas opções confiáveis
-  { id:'gospel1',   name:'Rádio Gospel Mais',     emoji:'✝️',  url:'https://stream.zeno.fm/yn65m0tmdrhvv',                         genre:'Gospel'    },
-  { id:'gospel2',   name:'Gospel Prime',           emoji:'🙏', url:'https://stream.zeno.fm/f3e4rqrmb5zuv',                         genre:'Gospel'    },
-  { id:'gospel3',   name:'Rádio Melodia',          emoji:'🎶', url:'https://stream.zeno.fm/tsua3rs0y6zuv',                         genre:'Gospel'    },
-  // Lo-fi / Chill
-  { id:'lofi1',     name:'Lofi Hip Hop',           emoji:'🎧', url:'https://stream.zeno.fm/f3e4jkrmb5zuv',                         genre:'Lo-fi'     },
-  { id:'chill1',    name:'Chill Out Zone',         emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',                genre:'Chill'     },
-  { id:'ambient1',  name:'Ambient Radio',          emoji:'🌙', url:'https://stream.zeno.fm/yn65m0tndrhvv',                         genre:'Ambient'   },
-  // Pop / Rock
-  { id:'pop1',      name:'Pop Hits Brasil',        emoji:'🎵', url:'https://stream.zeno.fm/4d5n1qrmb5zuv',                         genre:'Pop'       },
-  { id:'rock1',     name:'Radio Rock',             emoji:'🎸', url:'https://streams.ilovemusic.de/iloveradio5.mp3',                genre:'Rock'      },
-  // Sertanejo / Brasil
-  { id:'sertanejo', name:'Sertanejo Total',        emoji:'🤠', url:'https://stream.zeno.fm/2e0hmqrmb5zuv',                         genre:'Sertanejo' },
-  { id:'brasil1',   name:'MPB Radio',              emoji:'🇧🇷', url:'https://streams.ilovemusic.de/iloveradio24.mp3',              genre:'MPB'       },
-  { id:'samba1',    name:'Pagode e Samba',         emoji:'🥁', url:'https://stream.zeno.fm/7f0hmqrmb5zuv',                         genre:'Samba'     },
-  // Outros
-  { id:'jazz1',     name:'Jazz Radio',             emoji:'🎷', url:'https://streams.ilovemusic.de/iloveradio10.mp3',               genre:'Jazz'      },
-  { id:'classical', name:'Classical Music',        emoji:'🎻', url:'https://streams.ilovemusic.de/iloveradio14.mp3',               genre:'Clássico'  },
-  { id:'hiphop1',   name:'Hip Hop Radio',          emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',                genre:'Hip-Hop'   },
-  { id:'eletronic', name:'Electronic / Dance',     emoji:'⚡', url:'https://streams.ilovemusic.de/iloveradio3.mp3',                genre:'Eletrônico'},
+// Rádios fixas — verificadas e funcionais
+// Hunter.FM: streams brasileiros de alta qualidade
+// ilovemusic.de: streams internacionais confiáveis
+// SomaFM: streams internacionais sem anúncio
+const RADIOS_FIXAS = [
+  // ── BRASIL ─────────────────────────────────────────────
+  { id:'br_sertanejo',   name:'Sertanejo Universitário', emoji:'🤠', url:'https://streams.hunter.fm/sertanejo/mp3-128',    genre:'Sertanejo BR'  },
+  { id:'br_pagode',      name:'Pagode & Samba',          emoji:'🥁', url:'https://streams.hunter.fm/pagode/mp3-128',       genre:'Pagode BR'     },
+  { id:'br_gospel',      name:'Gospel BR',               emoji:'✝️', url:'https://streams.hunter.fm/gospel/mp3-128',       genre:'Gospel BR'     },
+  { id:'br_funk',        name:'Funk BR',                 emoji:'🎤', url:'https://streams.hunter.fm/funk/mp3-128',         genre:'Funk BR'       },
+  { id:'br_mpb',         name:'MPB',                     emoji:'🇧🇷', url:'https://streams.hunter.fm/mpb/mp3-128',         genre:'MPB BR'        },
+  { id:'br_pop',         name:'Pop Hits BR',             emoji:'🎵', url:'https://streams.hunter.fm/pop/mp3-128',          genre:'Pop BR'        },
+  { id:'br_rock',        name:'Rock BR',                 emoji:'🎸', url:'https://streams.hunter.fm/rock/mp3-128',         genre:'Rock BR'       },
+  { id:'br_forro',       name:'Forró',                   emoji:'🪗', url:'https://streams.hunter.fm/forro/mp3-128',        genre:'Forró BR'      },
+  { id:'br_axe',         name:'Axé & Baile',             emoji:'🎉', url:'https://streams.hunter.fm/axe/mp3-128',          genre:'Axé BR'        },
+  { id:'br_flashback',   name:'Flashback BR',            emoji:'📼', url:'https://streams.hunter.fm/flashback/mp3-128',    genre:'Flashback BR'  },
+  { id:'br_sertradicao', name:'Sertanejo Raiz',          emoji:'🌾', url:'https://streams.hunter.fm/sertanejoraiz/mp3-128',genre:'Sertanejo Raiz'},
+  { id:'br_hits',        name:'Hits do Momento',         emoji:'🔥', url:'https://streams.hunter.fm/hitsbrasil/mp3-128',   genre:'Hits BR'       },
+  // ── INTERNACIONAL ───────────────────────────────────────
+  { id:'int_lofi',       name:'Lofi Hip Hop',            emoji:'🎧', url:'https://streams.ilovemusic.de/iloveradio17.mp3', genre:'Lo-fi'         },
+  { id:'int_chill',      name:'Chill Out',               emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',  genre:'Chill'         },
+  { id:'int_hiphop',     name:'Hip-Hop Radio',           emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',  genre:'Hip-Hop'       },
+  { id:'int_rock',       name:'Rock Classic',            emoji:'🎸', url:'https://streams.ilovemusic.de/iloveradio5.mp3',  genre:'Rock'          },
+  { id:'int_pop',        name:'Pop Internacional',       emoji:'🌟', url:'https://streams.ilovemusic.de/iloveradio1.mp3',  genre:'Pop'           },
+  { id:'int_jazz',       name:'Jazz',                    emoji:'🎷', url:'https://streams.ilovemusic.de/iloveradio10.mp3', genre:'Jazz'          },
+  { id:'int_classical',  name:'Clássico',                emoji:'🎻', url:'https://streams.ilovemusic.de/iloveradio14.mp3', genre:'Clássico'      },
+  { id:'int_electronic', name:'Electronic / Dance',      emoji:'⚡', url:'https://streams.ilovemusic.de/iloveradio3.mp3',  genre:'Eletrônico'    },
+  { id:'int_ambient',    name:'Ambient / Relaxing',      emoji:'🌙', url:'https://somafm.com/groovesalad256.mp3',          genre:'Ambient'       },
+  { id:'int_groove',     name:'Groove Salad (SomaFM)',   emoji:'🎛️', url:'https://somafm.com/groovesalad130.pls',          genre:'Groove'        },
 ];
+
+// Cache de rádios do Radio Browser API (atualizado a cada hora)
+let _radioBrowserCache = [];
+let _radioBrowserLastFetch = 0;
+
+async function fetchRadioBrowser(tag, limit = 5) {
+  try {
+    const fetch = require('node-fetch');
+    const url   = `https://de1.api.radio-browser.info/json/stations/bytag/${encodeURIComponent(tag)}?limit=${limit}&order=clickcount&reverse=true&hidebroken=true&has_extended_info=true`;
+    const data  = await fetch(url, { timeout: 5000, headers: { 'User-Agent': 'VozHub/3.0' } }).then(r => r.json());
+    return (data || []).filter(s => s.url_resolved && s.lastcheckok === '1');
+  } catch { return []; }
+}
+
+async function getRadios() {
+  const now = Date.now();
+  // Recarrega do Radio Browser a cada 1h
+  if (now - _radioBrowserLastFetch > 3600000 || !_radioBrowserCache.length) {
+    _radioBrowserLastFetch = now;
+    try {
+      const [gospel, rap, sertanejo, hiphop] = await Promise.all([
+        fetchRadioBrowser('gospel', 4),
+        fetchRadioBrowser('rap', 3),
+        fetchRadioBrowser('sertanejo', 3),
+        fetchRadioBrowser('hip hop', 3),
+      ]);
+      const dynamic = [...gospel, ...rap, ...sertanejo, ...hiphop].map(s => ({
+        id:    's-' + s.stationuuid,
+        name:  s.name.slice(0, 30),
+        emoji: s.tags?.includes('gospel') ? '✝️' : s.tags?.includes('rap') ? '🎤' : s.tags?.includes('sertanejo') ? '🤠' : '📻',
+        url:   s.url_resolved,
+        genre: s.tags?.split(',')[0] || 'Rádio',
+        dynamic: true,
+      }));
+      _radioBrowserCache = dynamic;
+      console.log(`[Rádios] Radio Browser: ${dynamic.length} estações carregadas`);
+    } catch(e) {
+      console.warn('[Rádios] Radio Browser indisponível:', e.message);
+    }
+  }
+  // Combina fixas + dinâmicas, removendo duplicatas
+  const combined = [...RADIOS_FIXAS];
+  _radioBrowserCache.forEach(r => {
+    if (!combined.find(f => f.url === r.url)) combined.push(r);
+  });
+  return combined;
+}
+
+// Carrega no startup
+let RADIOS = RADIOS_FIXAS;
+getRadios().then(r => { RADIOS = r; console.log(`[Rádios] Total: ${r.length} estações`); });
 
 class MusicBot {
   constructor(io, channelKey) {
@@ -128,12 +187,23 @@ class MusicBot {
 
   broadcast() { this.io.to(this.room).emit('music:state', this.getState()); }
 
-  // ── Rádio ───────────────────────────────────────────────
+  // ── Rádio — entra na FILA (não interrompe o que está tocando) ──
   addRadio(radioId, requestedBy) {
     const r = RADIOS.find(x => x.id === radioId); if (!r) return false;
-    this._enqueue({ id: radioId, type:'radio', title: r.name, artist: r.genre+' · Ao vivo',
-      emoji: r.emoji, url: r.url, streamUrl: r.url, duration: 0,
-      durationFmt:'🔴 Ao vivo', requestedBy, thumbnail: null, isLive: true }, requestedBy);
+    this._enqueue({
+      id:          radioId,
+      type:        'radio',
+      title:       r.name,
+      artist:      r.genre + ' · Ao vivo 🔴',
+      emoji:       r.emoji,
+      url:         r.url,
+      streamUrl:   r.url,
+      duration:    0,
+      durationFmt: '🔴 Ao vivo',
+      requestedBy,
+      thumbnail:   null,
+      isLive:      true,
+    }, requestedBy);
     return true;
   }
 
@@ -161,25 +231,44 @@ class MusicBot {
 
   // ── SoundCloud ──────────────────────────────────────────
   async searchSoundCloud(query, socket) {
-    const client = getSC();
-    if (!client) {
-      socket.emit('music:sc:results', { results: [], error: 'SoundCloud indisponível no servidor.' });
-      return;
-    }
     socket.emit('music:searching', { source: 'soundcloud', query });
+    const fetch = require('node-fetch');
+
+    // Tenta soundcloud-scraper primeiro
+    const client = getSC();
+    if (client) {
+      try {
+        const res     = await client.search(query, 'track');
+        const results = (res.collection || []).slice(0, 8).map(t => ({
+          title:       t.title,
+          artist:      t.user?.username || 'SoundCloud',
+          url:         t.permalink_url || t.url,
+          thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
+          duration:    Math.floor((t.duration||0)/1000),
+          durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
+          type:'soundcloud', emoji:'☁️',
+        }));
+        if (results.length) { socket.emit('music:sc:results', { results }); return; }
+      } catch(e) { console.warn('[SC] scraper falhou:', e.message); }
+    }
+
+    // Fallback: API pública do SoundCloud (sem autenticação)
     try {
-      const res     = await client.search(query, 'track');
-      const results = (res.collection || []).slice(0, 8).map(t => ({
-        title: t.title, artist: t.user?.username || 'SoundCloud',
-        url: t.permalink_url || t.url,
-        thumbnail: t.artwork_url || null,
-        duration: Math.floor((t.duration||0)/1000),
+      const clientId = 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX'; // client_id público
+      const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${clientId}`;
+      const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
+      const results = (data.collection || []).slice(0, 8).map(t => ({
+        title:       t.title,
+        artist:      t.user?.username || 'SoundCloud',
+        url:         t.permalink_url,
+        thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
+        duration:    Math.floor((t.duration||0)/1000),
         durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
         type:'soundcloud', emoji:'☁️',
       }));
       socket.emit('music:sc:results', { results });
-    } catch (err) {
-      socket.emit('music:sc:results', { results: [], error: 'Erro SoundCloud: '+err.message });
+    } catch(e) {
+      socket.emit('music:sc:results', { results: [], error: 'SoundCloud indisponível no momento.' });
     }
   }
 
@@ -308,11 +397,27 @@ class MusicBot {
   // ── Controles ────────────────────────────────────────────
   _enqueue(track, requestedBy) {
     this.queue.push(track);
-    if (!this.playing) { this.currentIdx = this.queue.length-1; this._startTrack(); }
+    const position = this.queue.length;
+
+    if (!this.playing) {
+      // Nada tocando — começa imediatamente
+      this.currentIdx = this.queue.length - 1;
+      this._startTrack();
+      this.io.to(this.room).emit('music:added', { track, requestedBy, queueLength: this.queue.length, playingNow: true });
+    } else {
+      // Já tem algo tocando — entra no final da fila
+      this.io.to(this.room).emit('music:added', {
+        track, requestedBy,
+        queueLength: this.queue.length,
+        playingNow:  false,
+        position,
+        message: `"${track.title}" adicionado à fila (#${position})`,
+      });
+    }
+
     this._saveQueue();
     this.broadcast();
-    this.io.to(this.room).emit('music:added', { track, requestedBy, queueLength: this.queue.length });
-    console.log(`[Bot:${this.channelKey}] ➕ "${track.title}" por ${requestedBy}`);
+    console.log(`[Bot:${this.channelKey}] ➕ "${track.title}" por ${requestedBy} (pos ${position})`);
   }
   pause()  { if(!this.playing||this.paused) return; this.paused=true; if(this.startedAt) this.elapsed+=(Date.now()-this.startedAt)/1000; this._clearTimer(); this.audioStream.pause(); this.broadcast(); }
   resume() { if(!this.playing||!this.paused) return; this.paused=false; this.startedAt=Date.now(); const t=this.queue[this.currentIdx]; if(t?.duration>0){const r=t.duration-this.elapsed; if(r>0) this._skipTimer=setTimeout(()=>this.skip(),r*1000);} this.audioStream.resume(); this.broadcast(); }
@@ -336,7 +441,7 @@ class MusicBot {
   _fmt(s) { s=Math.floor(s||0); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
 
   // ── Rotas Express ────────────────────────────────────────
-  static async registerRoutes(app, uploadDir) {
+  static registerRoutes(app, uploadDir) {
     const multer = require('multer');
     const { v4: uuid } = require('uuid');
 
@@ -371,15 +476,17 @@ class MusicBot {
     const { promisify }      = require('util');
     const execFileAsync      = promisify(execFile);
 
-    // Verifica se yt-dlp está disponível
+    // Verifica se yt-dlp está disponível (async IIFE para permitir await)
     let ytdlpPath = null;
-    try {
-      const { stdout } = await promisify(exec)('which yt-dlp || where yt-dlp');
-      ytdlpPath = stdout.trim().split('\n')[0];
-      console.log('[yt-dlp] encontrado em:', ytdlpPath);
-    } catch {
-      console.warn('[yt-dlp] não encontrado — YouTube pode não funcionar');
-    }
+    (async () => {
+      try {
+        const { stdout } = await promisify(exec)('which yt-dlp || where yt-dlp');
+        ytdlpPath = stdout.trim().split('\n')[0];
+        console.log('[yt-dlp] encontrado em:', ytdlpPath);
+      } catch {
+        console.warn('[yt-dlp] não encontrado — YouTube pode não funcionar');
+      }
+    })();
 
     app.get('/api/ytstream', async (req, res) => {
       const { id } = req.query;
@@ -432,4 +539,4 @@ class MusicBot {
   }
 }
 
-module.exports = { MusicBot, RADIOS };
+module.exports = { MusicBot, RADIOS, RADIOS_FIXAS, getRadios };
