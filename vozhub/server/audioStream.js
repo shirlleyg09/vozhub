@@ -135,24 +135,40 @@ class AudioStream {
       const videoId = id || (url?.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)||[])[1];
       if (!videoId) return null;
 
-      // yt-dlp
+      // yt-dlp com cookies dinâmicos
       if (YTDLP) {
         try {
+          // Verifica cookies a cada chamada (podem ter sido enviados via /api/admin/cookies)
+          const cookiesFile = '/tmp/yt_cookies.txt';
+          const hasCookies  = fs.existsSync(cookiesFile) && fs.statSync(cookiesFile).size > 100;
+
+          const args = [
+            `https://www.youtube.com/watch?v=${videoId}`,
+            '--get-url', '-f', 'bestaudio[ext=webm]/bestaudio/best',
+            '--no-playlist', '--quiet', '--no-warnings',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+          ];
+          if (hasCookies) {
+            args.push('--cookies', cookiesFile);
+            console.log(`[AudioStream] Usando cookies (${fs.statSync(cookiesFile).size} bytes)`);
+          } else {
+            console.warn('[AudioStream] Sem cookies — rode o comando PowerShell para enviar');
+          }
+
           const { stdout } = await new Promise((res, rej) => {
-            const p = spawn(YTDLP, [
-              `https://www.youtube.com/watch?v=${videoId}`,
-              '--get-url', '-f', 'bestaudio[ext=webm]/bestaudio/best',
-              '--no-playlist', '--quiet', '--no-warnings',
-            ]);
+            const p = spawn(YTDLP, args);
             let out = '', err = '';
             p.stdout.on('data', d => out += d);
             p.stderr.on('data', d => err += d);
             p.on('close', code => code === 0 ? res({ stdout: out }) : rej(new Error(err)));
-            setTimeout(() => { p.kill(); rej(new Error('timeout')); }, 12000);
+            setTimeout(() => { p.kill(); rej(new Error('timeout')); }, 15000);
           });
           const streamUrl = stdout.trim().split('\n')[0];
-          if (streamUrl?.startsWith('http')) return { url: streamUrl, direct: false };
-        } catch(e) { console.warn('[AudioStream] yt-dlp:', e.message?.slice(0,80)); }
+          if (streamUrl?.startsWith('http')) {
+            console.log('[AudioStream] ✅ yt-dlp stream obtido com sucesso!');
+            return { url: streamUrl, direct: false };
+          }
+        } catch(e) { console.warn('[AudioStream] yt-dlp falhou:', e.message?.slice(0,120)); }
       }
 
       // Invidious fallback
