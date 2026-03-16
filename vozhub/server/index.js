@@ -278,6 +278,49 @@ io.on('connection', socket => {
 
 // ── REST ──────────────────────────────────────────────────
 app.get('/api/servers', (_, res) => res.json(SERVERS_CONFIG.map(s => fullServer(s.id))));
+
+// Rota para upload de cookies do YouTube (protegida por senha)
+app.post('/api/admin/cookies', express.text({ limit: '2mb' }), (req, res) => {
+  const secret = process.env.ADMIN_SECRET || 'vozhub-admin';
+  const auth   = req.headers['x-admin-secret'];
+  if (auth !== secret) return res.status(401).json({ error: 'Não autorizado' });
+
+  try {
+    const cookiesContent = req.body;
+    if (!cookiesContent?.includes('youtube')) {
+      return res.status(400).json({ error: 'Arquivo de cookies inválido — deve conter cookies do YouTube' });
+    }
+    const cookiesPath = '/tmp/yt_cookies.txt';
+    fs.writeFileSync(cookiesPath, cookiesContent, 'utf8');
+    const lines = cookiesContent.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
+    // Atualiza o COOKIES_PATH no audioStream via env simulado
+    process.env.YT_COOKIES_FILE = cookiesContent;
+    // Re-inicializa cookies em todos os bots
+    Object.values(state.channels).forEach(ch => {
+      if (ch.musicBot?.audioStream) {
+        ch.musicBot.audioStream._cookiesPath = cookiesPath;
+      }
+    });
+    console.log(`[Admin] Cookies atualizados via API: ${lines} cookies`);
+    res.json({ ok: true, cookies: lines });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Status das ferramentas
+app.get('/api/admin/status', (req, res) => {
+  const secret = process.env.ADMIN_SECRET || 'vozhub-admin';
+  if (req.headers['x-admin-secret'] !== secret) return res.status(401).json({ error: 'Não autorizado' });
+  const { FFMPEG, YTDLP } = require('./audioStream');
+  res.json({
+    ffmpeg:   FFMPEG || null,
+    ytdlp:    YTDLP  || null,
+    cookies:  !!process.env.YT_COOKIES_FILE,
+    cookiesLen: process.env.YT_COOKIES_FILE?.length || 0,
+  });
+});
+
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 const PORT = process.env.PORT || 3000;

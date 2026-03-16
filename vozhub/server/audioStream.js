@@ -25,36 +25,48 @@ const FFMPEG  = detectTool(['ffmpeg']);
 const YTDLP   = detectTool(['yt-dlp', 'yt_dlp']);
 console.log(`[AudioStream] ffmpeg: ${FFMPEG||'NÃO ENCONTRADO'} | yt-dlp: ${YTDLP||'NÃO ENCONTRADO'}`);
 
-// Salva cookies no disco na inicialização
+// ── Cookies do YouTube ───────────────────────────────────
 let COOKIES_PATH = null;
-(function initCookies() {
-  // Diagnóstico: lista todas as env vars relacionadas
-  const envKeys = Object.keys(process.env).filter(k => k.includes('YT') || k.includes('COOKIE'));
-  console.log('[AudioStream] Env vars YT/COOKIE encontradas:', envKeys.length ? envKeys : 'nenhuma');
 
-  const cookiesContent = process.env.YT_COOKIES_FILE;
-  if (!cookiesContent) {
-    console.warn('[AudioStream] ⚠️  YT_COOKIES_FILE não definido!');
-    console.warn('[AudioStream] No Render: Settings → Environment → adicione YT_COOKIES_FILE');
+function initCookies() {
+  const raw = process.env.YT_COOKIES_FILE || '';
+  const envKeys = Object.keys(process.env).filter(k => k.includes('YT') || k.includes('COOKIE'));
+  console.log('[AudioStream] Env vars YT/COOKIE:', envKeys.join(', ') || 'nenhuma');
+
+  if (!raw) {
+    console.warn('[AudioStream] ⚠️  YT_COOKIES_FILE vazio ou não definido');
     return;
   }
 
-  console.log(`[AudioStream] YT_COOKIES_FILE encontrado, tamanho: ${cookiesContent.length} chars`);
+  console.log(`[AudioStream] YT_COOKIES_FILE: ${raw.length} chars`);
 
   try {
+    // Normaliza quebras de linha — o Render às vezes converte \n em literal \\n
+    let normalized = raw
+      .replace(/\\n/g, '\n')   // \n literal → newline
+      .replace(/\\t/g, '\t')   // \t literal → tab
+      .replace(/\r\n/g, '\n')  // CRLF → LF
+      .trim();
+
+    // Garante cabeçalho Netscape
+    if (!normalized.startsWith('#')) {
+      normalized = '# Netscape HTTP Cookie File\n' + normalized;
+    }
+
     COOKIES_PATH = '/tmp/yt_cookies.txt';
-    // Garante que o conteúdo tem quebras de linha corretas
-    const normalized = cookiesContent.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
     fs.writeFileSync(COOKIES_PATH, normalized, 'utf8');
-    const lines = normalized.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
-    console.log(`[AudioStream] ✅ Cookies salvos em ${COOKIES_PATH} (${lines} domínios/cookies)`);
-    // Mostra primeiras linhas para debug
-    const preview = normalized.split('\n').slice(0,3).join(' | ');
-    console.log(`[AudioStream] Preview: ${preview.slice(0,100)}`);
+    const cookieLines = normalized.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+    console.log(`[AudioStream] ✅ Cookies salvos: ${cookieLines.length} cookies`);
+    if (cookieLines.length > 0) {
+      console.log(`[AudioStream] Exemplo: ${cookieLines[0].split('\t')[0]}...`);
+    }
   } catch(e) {
     console.error('[AudioStream] Erro ao salvar cookies:', e.message);
+    COOKIES_PATH = null;
   }
-})();
+}
+
+initCookies();
 
 // ── Instâncias Invidious ──────────────────────────────────
 const INVIDIOUS = [
