@@ -313,11 +313,28 @@ app.get('/api/admin/status', (req, res) => {
   const secret = process.env.ADMIN_SECRET || 'vozhub-admin';
   if (req.headers['x-admin-secret'] !== secret) return res.status(401).json({ error: 'Não autorizado' });
   const { FFMPEG, YTDLP } = require('./audioStream');
+  const cookiesFile = '/tmp/yt_cookies.txt';
+  let cookiesInfo = { exists: false, size: 0, firstLine: '', lines: 0 };
+  try {
+    if (fs.existsSync(cookiesFile)) {
+      const raw = fs.readFileSync(cookiesFile, 'utf8');
+      const lines = raw.split('\n');
+      cookiesInfo = {
+        exists: true,
+        size: raw.length,
+        lines: lines.filter(l => l.trim() && !l.startsWith('#')).length,
+        firstLine: lines[0]?.slice(0, 80),
+        secondLine: lines[1]?.slice(0, 80),
+        hasNetscape: raw.includes('Netscape'),
+        hasYoutube: raw.includes('youtube'),
+        hasTabs: raw.includes('\t'),
+      };
+    }
+  } catch(e) { cookiesInfo.error = e.message; }
   res.json({
     ffmpeg:   FFMPEG || null,
     ytdlp:    YTDLP  || null,
-    cookies:  !!process.env.YT_COOKIES_FILE,
-    cookiesLen: process.env.YT_COOKIES_FILE?.length || 0,
+    cookies:  cookiesInfo,
   });
 });
 
