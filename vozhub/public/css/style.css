@@ -329,3 +329,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .pc-card { position: relative; }
 .pc-card:hover .pc-user-vol-btn { opacity: 1; }
 .pc-user-vol-btn:hover { background: var(--blue); color: #fff; opacity: 1 !important; }
+.mtab-au.active { background: linear-gradient(135deg, #7e22ce, #a855f7); box-shadow: 0 4px 12px rgba(168,85,247,.3); }
+.si-add.au { background: #7e22ce; }
+.si-add.au:hover { background: #6b21a8; }

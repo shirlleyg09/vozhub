@@ -271,6 +271,19 @@ io.on('connection', socket => {
     await bot.searchYouTube(query, socket);
   });
 
+  // ── Audius ────────────────────────────────────────────
+  socket.on('music:search:audius', async ({ query }) => {
+    if (limited(socket.id)) return;
+    const bot = getBot(); if (!bot) return;
+    await bot.searchAudius(query, socket);
+  });
+
+  socket.on('music:add:audius', async ({ audiusId, title, artist, duration, thumbnail }) => {
+    if (limited(socket.id)) return;
+    const bot = getBot(); if (!bot) return;
+    await bot.addAudius({ audiusId, title, artist, duration, thumbnail, requestedBy: userName() }, socket);
+  });
+
   // ── Jamendo ───────────────────────────────────────────
   socket.on('music:search:jamendo', async ({ query }) => {
     if (limited(socket.id)) return;

@@ -139,6 +139,7 @@
       <button class="mtab"         data-tab="tab-url"    onclick="switchTab(this,'tab-url')">🔗 Link</button>
 
       <button class="mtab mtab-jm" data-tab="tab-jm"     onclick="switchTab(this,'tab-jm')">🎼 Jamendo</button>
+      <button class="mtab mtab-au" data-tab="tab-au"     onclick="switchTab(this,'tab-au')">🎵 Audius</button>
 
     </div>
 
@@ -180,6 +181,17 @@
       <button class="mo-ok" style="margin-top:14px;width:100%" onclick="addDirectUrl()">
         + Adicionar à fila
       </button>
+    </div>
+
+    <!-- Tab: Audius -->
+    <div class="tab-content" id="tab-au">
+      <p class="tab-desc">🎵 <strong>Audius</strong> — plataforma descentralizada com hip-hop, eletrônico, indie e remixes. API gratuita, sem conta necessária.</p>
+      <div class="source-status ok" style="display:block;margin-bottom:12px">✅ Audius disponível — stream gratuito e sem bloqueios</div>
+      <div class="mo-search-row">
+        <input class="mo-in" id="au-in" placeholder="Artista, música, gênero (ex: lofi, trap, chill)..." autocomplete="off">
+        <button class="mo-search-btn" onclick="doAudiusSearch()">Buscar</button>
+      </div>
+      <div id="au-results" class="search-results" style="margin-top:14px"></div>
     </div>
 
     <!-- Tab: Jamendo -->

@@ -12,18 +12,32 @@ const path  = require('path');
 const fs    = require('fs');
 const fetch = require('node-fetch');
 
-// ── Detecta ferramentas disponíveis ──────────────────────
+// ── Detecta ferramentas disponíveis (não-bloqueante) ─────
+const { execFile } = require('child_process');
+
 function detectTool(names) {
+  // Usa caminhos conhecidos primeiro (evita execSync que bloqueia)
+  const known = {
+    'ffmpeg':  ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg'],
+    'yt-dlp':  ['/opt/render/project/src/.venv/bin/yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'],
+    'yt_dlp':  ['/opt/render/project/src/.venv/bin/yt-dlp'],
+  };
   for (const name of names) {
-    try { execSync(`which ${name}`, { stdio: 'ignore' }); return name; } catch {}
-    try { execSync(`${name} --version`, { stdio: 'ignore' }); return name; } catch {}
+    const paths = known[name] || [];
+    for (const p of paths) {
+      if (require('fs').existsSync(p)) return p;
+    }
+  }
+  // Fallback: tenta pelo nome (PATH)
+  for (const name of names) {
+    try { execSync(`which ${name} 2>/dev/null`, { stdio: 'pipe', timeout: 1000 }); return name; } catch {}
   }
   return null;
 }
 
-const FFMPEG  = detectTool(['ffmpeg']);
-const YTDLP   = detectTool(['yt-dlp', 'yt_dlp']);
-console.log(`[AudioStream] ffmpeg: ${FFMPEG||'NÃO ENCONTRADO'} | yt-dlp: ${YTDLP||'NÃO ENCONTRADO'}`);
+const FFMPEG = detectTool(['ffmpeg']);
+const YTDLP  = detectTool(['yt-dlp', 'yt_dlp']);
+console.log(`[AudioStream] ffmpeg: ${FFMPEG||'N/A'} | yt-dlp: ${YTDLP||'N/A'}`);
 
 // ── Cookies do YouTube ───────────────────────────────────
 let COOKIES_PATH = null;
@@ -198,7 +212,7 @@ class AudioStream {
 
     // Rádios, MP3, links diretos e Jamendo — sempre tocam no cliente diretamente
     // Não passam pelo ffmpeg (evita latência e problemas de proxy)
-    const DIRECT_TYPES = ['radio', 'mp3', 'url', 'jamendo'];
+    const DIRECT_TYPES = ['radio', 'mp3', 'url', 'jamendo', 'audius'];
     if (DIRECT_TYPES.includes(track.type) || track.isLive) {
       this._playing = true; this._paused = false;
       const streamUrl = track.streamUrl || track.url;

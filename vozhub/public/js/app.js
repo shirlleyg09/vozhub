@@ -196,6 +196,7 @@ socket.on('music:searching', ({ source }) => {
 });
 socket.on('music:sc:results',      ({ results, error }) => renderSearchResults('sc-results', results, error, 'sc'));
 socket.on('music:jamendo:results', ({ results, error }) => renderSearchResults('jm-results', results, error, 'jamendo'));
+socket.on('music:audius:results',  ({ results, error }) => renderSearchResults('au-results', results, error, 'audius'));
 socket.on('music:yt:results', ({ results, error }) => renderSearchResults('yt-results', results, error, 'yt'));
 socket.on('error',  ({ msg }) => toast('❌ ' + msg));
 socket.on('kicked', ({ reason }) => { toast('🚫 '+reason); S.connected=false; rtc?.disconnect(); S.users=[]; rAll(); });
@@ -683,7 +684,18 @@ function doSCSearch() {
 }
 document.getElementById('sc-in').addEventListener('keydown', e => { if (e.key==='Enter') doSCSearch(); });
 
-/* ── Jamendo ───────────────────────────────────────────── */
+/* ── Audius ────────────────────────────────────────────── */
+function doAudiusSearch() {
+  const q = document.getElementById('au-in').value.trim(); if (!q) return;
+  if (!S.connected) { toast('⚠️ Entre em um canal primeiro'); return; }
+  socket.emit('music:search:audius', { query: q });
+  document.getElementById('au-results').innerHTML = '<div class="search-loading">🔍 Buscando no Audius...</div>';
+}
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'au-in' && e.key === 'Enter') doAudiusSearch();
+});
+
+/* ── Jamendo ────────────────────────────────────────────── */
 function doJamendoSearch() {
   const q = document.getElementById('jm-in').value.trim(); if (!q) return;
   if (!S.connected) { toast('⚠️ Entre em um canal primeiro'); return; }
@@ -714,17 +726,26 @@ function renderSearchResults(containerId, results, error, source) {
   if (!results?.length) { c.innerHTML = '<div class="search-loading">Nenhum resultado.</div>'; return; }
   results.forEach(r => {
     const item = document.createElement('div'); item.className = 'search-item';
-    const srcEmoji = source==='sc'?'☁️':source==='jamendo'?'🎼':'▶️';
-    const srcColor = source==='sc'?'sc':source==='jamendo'?'jm':'';
+    const srcEmoji = source==='audius'?'🎵':source==='sc'?'☁️':source==='jamendo'?'🎼':'▶️';
+    const srcColor = source==='audius'?'au':source==='sc'?'sc':source==='jamendo'?'jm':'';
     item.innerHTML = `
       <div class="si-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="">`:(r.emoji||srcEmoji)}</div>
       <div class="si-info">
         <div class="si-title">${r.title}</div>
-        <div class="si-meta">${r.artist||''} · ${r.durationFmt||'?'} · ${source==='jamendo'?'🎼 Jamendo (CC)':source==='sc'?'☁️ SoundCloud':'▶️'}</div>
+        <div class="si-meta">${r.artist||''} · ${r.durationFmt||'?'} · ${source==='audius'?'🎵 Audius':source==='jamendo'?'🎼 Jamendo (CC)':source==='sc'?'☁️ SoundCloud':'▶️'}</div>
       </div>
       <button class="si-add ${srcColor}">+ Fila</button>`;
     item.querySelector('.si-add').onclick = () => {
-      if (source === 'sc') {
+      if (source === 'audius') {
+        socket.emit('music:add:audius', {
+          audiusId:  r.audiusId,
+          title:     r.title,
+          artist:    r.artist,
+          duration:  r.duration,
+          thumbnail: r.thumbnail,
+        });
+        toast(`🎵 Adicionando: ${r.title}`);
+      } else if (source === 'sc') {
         socket.emit('music:add:sc', {
           url: r.url, title: r.title, artist: r.artist,
           duration: r.duration, thumbnail: r.thumbnail,

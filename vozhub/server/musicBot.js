@@ -120,9 +120,16 @@ async function getRadios() {
   return combined;
 }
 
-// Carrega no startup
+// NÃO carrega Radio Browser no startup — evita lentidão
+// As rádios fixas ficam disponíveis imediatamente
 let RADIOS = RADIOS_FIXAS;
-getRadios().then(r => { RADIOS = r; console.log(`[Rádios] Total: ${r.length} estações`); });
+// Carrega Radio Browser em background após 10s (não bloqueia o startup)
+setTimeout(() => {
+  getRadios().then(r => {
+    RADIOS = r;
+    console.log(`[Rádios] Radio Browser carregado: ${r.length} estações`);
+  }).catch(() => {});
+}, 10000);
 
 class MusicBot {
   constructor(io, channelKey) {
@@ -132,8 +139,6 @@ class MusicBot {
     this.startedAt = null; this._skipTimer = null; this.history = [];
     // AudioStream: streaming server-side igual bot Discord
     this.audioStream = new AudioStream(io, channelKey);
-    // Quando faixa termina no audioStream, pula para próxima
-    io.on('connection', () => {}); // placeholder
     // Restaura fila salva do disco
     this._loadQueue();
   }
@@ -485,6 +490,89 @@ class MusicBot {
     }, requestedBy);
   }
 
+  // ── AUDIUS ──────────────────────────────────────────────
+  // Plataforma descentralizada, API pública, sem autenticação
+  // Conteúdo: hip-hop, eletrônico, indie, remixes
+  async searchAudius(query, socket) {
+    socket.emit('music:searching', { source: 'audius', query });
+    const fetch = require('node-fetch');
+
+    // Audius usa múltiplos nodes — tenta cada um
+    const AUDIUS_NODES = [
+      'https://discoveryprovider.audius.co',
+      'https://discoveryprovider2.audius.co',
+      'https://discoveryprovider3.audius.co',
+    ];
+
+    for (const node of AUDIUS_NODES) {
+      try {
+        const url  = `${node}/v1/tracks/search?query=${encodeURIComponent(query)}&limit=8&app_name=VozHub`;
+        const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
+        const results = (data.data || []).map(t => ({
+          title:       t.title,
+          artist:      t.user?.name || 'Audius',
+          url:         `https://audius.co${t.permalink}`,
+          streamUrl:   null, // resolvido ao adicionar
+          audiusId:    t.id,
+          thumbnail:   t.artwork?.['480x480'] || t.artwork?.['150x150'] || null,
+          duration:    t.duration || 0,
+          durationFmt: this._fmt(t.duration || 0),
+          type:        'audius',
+          emoji:       '🎵',
+          genre:       t.genre || '',
+        }));
+        if (results.length) {
+          console.log(`[Audius] ✅ ${results.length} resultados via ${node}`);
+          socket.emit('music:audius:results', { results, node });
+          return;
+        }
+      } catch(e) { console.warn(`[Audius] ${node} falhou:`, e.message?.slice(0,60)); }
+    }
+    socket.emit('music:audius:results', { results: [], error: 'Audius indisponível.' });
+  }
+
+  async addAudius({ audiusId, title, artist, duration, thumbnail, requestedBy }, socket) {
+    const fetch = require('node-fetch');
+    const AUDIUS_NODES = [
+      'https://discoveryprovider.audius.co',
+      'https://discoveryprovider2.audius.co',
+    ];
+
+    let streamUrl = null;
+    for (const node of AUDIUS_NODES) {
+      try {
+        // Resolve stream URL do Audius
+        const url  = `${node}/v1/tracks/${audiusId}/stream?app_name=VozHub`;
+        const resp = await fetch(url, { method: 'HEAD', timeout: 6000, redirect: 'follow' });
+        if (resp.ok || resp.status === 302) {
+          streamUrl = resp.url || url;
+          break;
+        }
+      } catch {}
+    }
+
+    if (!streamUrl) {
+      // Fallback direto
+      streamUrl = `https://discoveryprovider.audius.co/v1/tracks/${audiusId}/stream?app_name=VozHub`;
+    }
+
+    this._enqueue({
+      id:          `au-${audiusId}`,
+      type:        'audius',
+      title:       title || 'Audius Track',
+      artist:      (artist || 'Audius') + ' · por ' + requestedBy,
+      emoji:       '🎵',
+      url:         `https://audius.co/tracks/${audiusId}`,
+      streamUrl,
+      audiusId,
+      duration:    duration || 0,
+      durationFmt: this._fmt(duration || 0),
+      requestedBy,
+      thumbnail:   thumbnail || null,
+      isLive:      false,
+    }, requestedBy);
+  }
+
   // ── Controles ────────────────────────────────────────────
   _enqueue(track, requestedBy) {
     this.queue.push(track);
@@ -669,4 +757,4 @@ class MusicBot {
   }
 }
 
-module.exports = { MusicBot, RADIOS, RADIOS_FIXAS, getRadios };
+module.exports = { MusicBot, RADIOS, RADIOS_FIXAS, getRadios }; // Audius integrado
