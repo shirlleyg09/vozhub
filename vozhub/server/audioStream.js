@@ -195,21 +195,35 @@ class AudioStream {
   // ── Iniciar streaming de uma faixa ────────────────────
   async startTrack(track) {
     this.stop(); // Para o que estiver tocando
-    if (!FFMPEG) {
-      console.warn('[AudioStream] ffmpeg não disponível — usando stream direto');
+
+    // Rádios, MP3, links diretos e Jamendo — sempre tocam no cliente diretamente
+    // Não passam pelo ffmpeg (evita latência e problemas de proxy)
+    const DIRECT_TYPES = ['radio', 'mp3', 'url', 'jamendo'];
+    if (DIRECT_TYPES.includes(track.type) || track.isLive) {
       this._playing = true; this._paused = false;
-      // Sem ffmpeg: envia a URL para o cliente tocar diretamente
+      const streamUrl = track.streamUrl || track.url;
+      console.log(`[AudioStream:${this.channelKey}] ▶ DIRETO: ${track.title} (${track.type})`);
       this.io.to(this.room).emit('audio:direct', {
-        url:        track.streamUrl || track.url,
-        type:       track.type,
-        isLive:     track.isLive,
-        sampleRate: this._sampleRate,
-        channels:   this._channels,
+        url:    streamUrl,
+        type:   track.type,
+        isLive: track.isLive || false,
       });
       return;
     }
 
-    console.log(`[AudioStream:${this.channelKey}] Iniciando: ${track.title}`);
+    // YouTube — tenta via ffmpeg/yt-dlp
+    if (!FFMPEG) {
+      console.warn('[AudioStream] ffmpeg não disponível — stream direto fallback');
+      this._playing = true; this._paused = false;
+      this.io.to(this.room).emit('audio:direct', {
+        url:    track.streamUrl || track.url,
+        type:   track.type,
+        isLive: false,
+      });
+      return;
+    }
+
+    console.log(`[AudioStream:${this.channelKey}] Iniciando via ffmpeg: ${track.title}`);
     const resolved = await this.resolveStreamUrl(track);
     if (!resolved) {
       this.io.to(this.room).emit('music:error', { msg: `Não foi possível carregar: ${track.title}` });

@@ -58,21 +58,30 @@ class BotAudioPlayer {
       } catch(e) { console.warn('[BotAudio] chunk error:', e.message); }
     });
 
-    // Fallback: servidor sem ffmpeg, toca URL direto
-    this.socket.on('audio:direct', ({ url, isLive }) => {
-      console.log('[BotAudio] Modo direto (sem ffmpeg no servidor):', url);
+    // Rádios, MP3, Jamendo e fallback tocam direto no cliente
+    this.socket.on('audio:direct', ({ url, type, isLive }) => {
+      console.log('[BotAudio] Direto:', type, url?.slice(0,60));
       const audio = document.getElementById('music-audio');
       if (!audio) return;
-      if (audio.dataset.url !== url) {
-        audio.preload = isLive ? 'none' : 'auto';
-        audio.src = url;
-        audio.dataset.url = url;
-        audio.volume = this._volume;
-        audio.play().catch(e => {
-          console.warn('[BotAudio] direct play blocked:', e.message);
-          document.addEventListener('click', () => audio.play().catch(()=>{}), { once: true });
-        });
-      }
+      // Para o áudio anterior imediatamente
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      // Inicia novo
+      audio.dataset.url = url;
+      audio.preload     = isLive ? 'none' : 'auto';
+      audio.src         = url;
+      audio.volume      = Math.min(1, this._volume);
+      audio.muted       = this._muted;
+      audio.play().catch(e => {
+        console.warn('[BotAudio] play bloqueado:', e.message);
+        if (e.name === 'NotAllowedError') {
+          document.addEventListener('click', () => {
+            this.unlock();
+            audio.play().catch(()=>{});
+          }, { once: true });
+        }
+      });
     });
 
     // Controles

@@ -690,7 +690,10 @@ function doJamendoSearch() {
   socket.emit('music:search:jamendo', { query: q });
   document.getElementById('jm-results').innerHTML = '<div class="search-loading">🔍 Buscando no Jamendo...</div>';
 }
-document.getElementById('jm-in')?.addEventListener('keydown', e => { if (e.key === 'Enter') doJamendoSearch(); });
+// Listener adicionado via delegação para garantir que o elemento existe
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'jm-in' && e.key === 'Enter') doJamendoSearch();
+});
 
 /* ── YouTube ───────────────────────────────────────────── */
 function doYTSearch() {
