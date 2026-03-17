@@ -355,14 +355,19 @@ io.on('connection', socket => {
   // ── Compartilhamento de tela ──────────────────────────
   socket.on('screen:start', () => {
     const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    const ch   = state.channels[chKey(user.srvId, user.chId)];
+    // Avisa todos no canal
     socket.to(roomName(user.srvId, user.chId)).emit('screen:start', { socketId: socket.id, name: user.name });
-    console.log(`[Screen] ${user.name} iniciou compartilhamento`);
+    // Envia lista de peers para quem está compartilhando criar os offers
+    const peers = ch ? [...ch.users.keys()].filter(id => id !== socket.id) : [];
+    socket.emit('screen:peers', { peers });
+    console.log(`[Screen] ${user.name} compartilhou — ${peers.length} peers`);
   });
   socket.on('screen:stop', () => {
     const user = state.sockets.get(socket.id); if (!user?.srvId) return;
     socket.to(roomName(user.srvId, user.chId)).emit('screen:stop', { socketId: socket.id, name: user.name });
   });
-  // Signaling WebRTC para screen share (PCs separadas)
+  // Signaling dedicado para screen share
   socket.on('screen:offer',  ({ to, offer })     => socket.to(to).emit('screen:offer',  { from: socket.id, offer }));
   socket.on('screen:answer', ({ to, answer })    => socket.to(to).emit('screen:answer', { from: socket.id, answer }));
   socket.on('screen:ice',    ({ to, candidate }) => socket.to(to).emit('screen:ice',    { from: socket.id, candidate }));

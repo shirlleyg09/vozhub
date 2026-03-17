@@ -349,7 +349,8 @@ async function joinVoice() {
   S.connected = true;
   socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
   playSound('join');
-  // Mostra botão de compartilhar tela
+  // Inicializa ScreenShare e mostra botão
+  if (!_screen) _screen = new ScreenShare(socket);
   const sb = document.getElementById('screen-btn');
   if (sb) sb.style.display = 'flex';
   rAll(); toast('🎤 Conectado a '+ch.name);
@@ -870,143 +871,19 @@ function copyInvite() {
 }
 
 /* ── Compartilhamento de Tela ──────────────────────────── */
-// Funciona com Netflix, Prime, qualquer aba ou janela do computador
-// Usa WebRTC getDisplayMedia → transmite para todos os peers no canal
-
-let _screenStream = null;
-let _screenPC     = new Map(); // peerId -> RTCPeerConnection para screen
+let _screen = null; // instância de ScreenShare
 let _screenSharing = false;
 
 async function toggleScreenShare() {
-  if (_screenSharing) { stopScreenShare(); return; }
-  if (!S.connected) { toast('⚠️ Entre em um canal de voz primeiro'); return; }
-  try {
-    // Captura tela — abre seletor do SO (qualquer aba, janela, Netflix, etc.)
-    _screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 }, cursor: 'always' },
-      audio: { echoCancellation: false, noiseSuppression: false }, // captura áudio do sistema
-    });
-    _screenSharing = true;
-
-    // Notifica servidor → server avisa os outros peers
-    socket.emit('screen:start');
-
-    // Cria peer connections separadas para o stream de tela
-    // (evita interferir com as conexões de áudio)
-    if (rtc?.peers) {
-      for (const [peerId, peer] of rtc.peers) {
-        try {
-          // Cria PC separada para o vídeo da tela
-          const screenPC = new RTCPeerConnection(rtc.iceConfig);
-          _screenPC.set(peerId, screenPC);
-
-          _screenStream.getTracks().forEach(track => {
-            screenPC.addTrack(track, _screenStream);
-          });
-
-          screenPC.onicecandidate = ({ candidate }) => {
-            if (candidate) socket.emit('screen:ice', { to: peerId, candidate });
-          };
-
-          const offer = await screenPC.createOffer();
-          await screenPC.setLocalDescription(offer);
-          socket.emit('screen:offer', { to: peerId, offer });
-        } catch(e) { console.warn('[Screen] error:', e.message); }
-      }
-    }
-
-    const btn = document.getElementById('screen-btn');
-    if (btn) { btn.textContent = '🔴 Parar compartilhamento'; btn.style.color = 'var(--red)'; }
-    toast('🖥️ Compartilhando tela — todos podem ver!');
-
-    // Para quando o usuário clica em "Parar" no banner do SO
-    _screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
-  } catch(e) {
-    if (e.name !== 'NotAllowedError') toast('❌ ' + e.message);
-  }
+  if (!_screen) _screen = new ScreenShare(socket);
+  _screenSharing = _screen.sharing;
+  await _screen.start();
+  _screenSharing = _screen.sharing;
 }
 
 function stopScreenShare() {
-  if (_screenStream) {
-    _screenStream.getTracks().forEach(t => t.stop());
-    _screenStream = null;
-  }
-  // Fecha PCs de tela
-  _screenPC.forEach(pc => { try { pc.close(); } catch {} });
-  _screenPC.clear();
+  _screen?.stop();
   _screenSharing = false;
-  socket.emit('screen:stop');
-  const btn = document.getElementById('screen-btn');
-  if (btn) { btn.textContent = '🖥️ Compartilhar tela'; btn.style.color = ''; }
-  document.getElementById('screen-overlay').style.display = 'none';
-  toast('🖥️ Compartilhamento encerrado');
 }
 
-// Signaling WebRTC para screen share separado
-socket.on('screen:offer', async ({ from, offer }) => {
-  try {
-    const pc = new RTCPeerConnection(rtc?.iceConfig || { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    _screenPC.set(from, pc);
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) socket.emit('screen:ice', { to: from, candidate });
-    };
-    pc.ontrack = ({ streams }) => {
-      const stream = streams[0]; if (!stream) return;
-      onScreenTrack(from, stream);
-    };
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit('screen:answer', { to: from, answer });
-  } catch(e) { console.error('[Screen] offer error:', e.message); }
-});
-
-socket.on('screen:answer', async ({ from, answer }) => {
-  const pc = _screenPC.get(from); if (!pc) return;
-  try { await pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch {}
-});
-
-socket.on('screen:ice', async ({ from, candidate }) => {
-  const pc = _screenPC.get(from); if (!pc) return;
-  try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
-});
-
-// Recebe notificação que alguém começou a compartilhar
-socket.on('screen:start', ({ socketId, name }) => {
-  toast(`🖥️ ${name} está compartilhando a tela — abrindo...`);
-  const overlay = document.getElementById('screen-overlay');
-  const title   = document.getElementById('screen-title');
-  const badge   = document.getElementById('screen-badge');
-  const body    = document.getElementById('screen-body');
-  if (title) title.textContent = `🖥️ Tela de ${name}`;
-  if (badge) badge.textContent = '👁 Assistindo';
-  if (body)  body.innerHTML = '<div class="screen-empty" id="screen-wait">⏳ Aguardando stream de vídeo...<br><small>O vídeo aparece assim que a conexão WebRTC for estabelecida</small></div>';
-  overlay.style.display = 'flex';
-  // O vídeo chega via WebRTC ontrack — tratado no webrtc.js
-  // Aqui só monitoramos para exibir quando chegar
-  window._pendingScreenFrom = socketId;
-});
-
-socket.on('screen:stop', ({ socketId, name }) => {
-  const overlay = document.getElementById('screen-overlay');
-  overlay.style.display = 'none';
-  document.getElementById(`screen-video-${socketId}`)?.remove();
-  toast(`🖥️ ${name || 'Usuário'} encerrou o compartilhamento`);
-});
-
-// Chamado pelo webrtc.js quando chega um stream de vídeo de tela
-function onScreenTrack(peerId, stream) {
-  const body = document.getElementById('screen-body'); if (!body) return;
-  document.getElementById('screen-wait')?.remove();
-  let vid = document.getElementById(`screen-video-${peerId}`);
-  if (!vid) {
-    vid = document.createElement('video');
-    vid.id = `screen-video-${peerId}`;
-    vid.className = 'screen-video';
-    vid.autoplay = true; vid.controls = true; vid.playsInline = true;
-    body.appendChild(vid);
-  }
-  vid.srcObject = stream;
-  vid.play().catch(() => {});
-  document.getElementById('screen-overlay').style.display = 'flex';
-}
+function onScreenTrack() {} // mantido por compatibilidade — ScreenShare.js trata direto
