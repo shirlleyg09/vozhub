@@ -196,17 +196,55 @@ io.on('connection', socket => {
 
   // ── Music Bot — fila colaborativa ─────────────────────
   function getBot() {
-    const user = state.sockets.get(socket.id); if (!user?.srvId) return null;
+    const user = state.sockets.get(socket.id);
+    if (!user?.srvId) return null;
     return state.channels[chKey(user.srvId, user.chId)]?.musicBot || null;
   }
   function userName() { return state.sockets.get(socket.id)?.name || 'Anônimo'; }
 
+  // Verifica se radio existe no cache dinâmico também
+  async function findRadio(radioId) {
+    // Busca nas rádios fixas primeiro
+    const { RADIOS_FIXAS } = require('./musicBot');
+    const fixed = RADIOS_FIXAS?.find(r => r.id === radioId);
+    if (fixed) return fixed;
+    // Busca nas rádios do Radio Browser (id começa com 's-')
+    if (radioId.startsWith('s-')) {
+      const uuid = radioId.replace('s-', '');
+      try {
+        const fetch = require('node-fetch');
+        const data = await fetch(`https://de1.api.radio-browser.info/json/stations/byuuid/${uuid}`, { timeout: 5000 }).then(r => r.json());
+        const s = data[0];
+        if (s) return { id: radioId, name: s.name, emoji: '📻', url: s.url_resolved, genre: s.tags?.split(',')[0] || 'Rádio' };
+      } catch {}
+    }
+    return null;
+  }
+
   // Qualquer usuário pode adicionar — sem restrição de role
-  socket.on('music:add:radio', ({ radioId }) => {
+  socket.on('music:add:radio', async ({ radioId }) => {
     if (limited(socket.id)) return;
     const bot = getBot(); if (!bot) return;
-    const ok  = bot.addRadio(radioId, userName());
-    if (!ok) socket.emit('music:error', { msg: 'Rádio não encontrada.' });
+    // Tenta adicionar pelo id (rádios fixas)
+    const ok = bot.addRadio(radioId, userName());
+    if (!ok) {
+      // Busca rádio dinâmica (Radio Browser)
+      const radio = await findRadio(radioId);
+      if (radio) {
+        bot.addDirectUrl(radio.url, radio.name, userName());
+        // Marca como rádio ao vivo
+        const idx = bot.queue.length - 1;
+        if (bot.queue[idx]) {
+          bot.queue[idx].type  = 'radio';
+          bot.queue[idx].emoji = radio.emoji || '📻';
+          bot.queue[idx].isLive = true;
+          bot.queue[idx].durationFmt = '🔴 Ao vivo';
+          bot.broadcast();
+        }
+      } else {
+        socket.emit('music:error', { msg: 'Rádio não encontrada.' });
+      }
+    }
   });
 
   socket.on('music:add:url', ({ url, title }) => {
@@ -231,6 +269,19 @@ io.on('connection', socket => {
     if (limited(socket.id)) return;
     const bot = getBot(); if (!bot) return;
     await bot.searchYouTube(query, socket);
+  });
+
+  // ── Jamendo ───────────────────────────────────────────
+  socket.on('music:search:jamendo', async ({ query }) => {
+    if (limited(socket.id)) return;
+    const bot = getBot(); if (!bot) return;
+    await bot.searchJamendo(query, socket);
+  });
+
+  socket.on('music:add:jamendo', ({ streamUrl, url, title, artist, duration, thumbnail }) => {
+    if (limited(socket.id)) return;
+    const bot = getBot(); if (!bot) return;
+    bot.addJamendo({ streamUrl, url, title, artist, duration, thumbnail, requestedBy: userName() }, socket);
   });
 
   // ── SoundCloud ────────────────────────────────────────

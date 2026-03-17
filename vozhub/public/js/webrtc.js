@@ -1,277 +1,296 @@
 /**
- * VozHub — WebRTC Manager
- * Gerencia peer connections, microfone, e VAD (Voice Activity Detection)
+ * VozHub — WebRTC Manager v2
+ * - Noise reduction via Web Audio API (filtros reais)
+ * - Volume por usuário (igual Discord)
+ * - Controle de ganho do microfone funcional
+ * - VAD melhorado
  */
 
 class WebRTCManager {
   constructor(socket) {
-    this.socket = socket;
-    this.peers  = new Map();  // peerId -> RTCPeerConnection
-    this.localStream   = null;
-    this.audioContext  = null;
-    this.analyser      = null;
-    this.micOn    = true;
-    this.deafOn   = false;
-    this.vadTimer = null;
-    this.onSpeaking = null; // callback(bool)
+    this.socket      = socket;
+    this.peers       = new Map();   // peerId -> { pc, gainNode, audioEl }
+    this.localStream = null;
+    this.audioCtx    = null;
+    this.analyser    = null;
+    this.micOn       = true;
+    this.deafOn      = false;
+    this.vadTimer    = null;
+    this.onSpeaking  = null;
+    this._micGain    = null;
+    this._peerVolumes = new Map(); // peerId -> volume 0~2
 
-    // STUN/TURN servers (adicione TURN para produção)
     this.iceConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        // Para produção adicione TURN:
-        // { urls: 'turn:seu-servidor:3478', username: 'user', credential: 'pass' }
       ]
     };
-
     this._bindSocketEvents();
   }
 
-  // ── Ganho do microfone ─────────────────────────────────
-  setMicVolume(value) {
-    // value: 0.0 a 2.0 (1.0 = normal, 2.0 = dobro do volume)
-    if (this._micGain) {
-      this._micGain.gain.setTargetAtTime(value, this._micGain.context.currentTime, 0.01);
+  _getCtx() {
+    if (!this.audioCtx) {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
     }
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    return this.audioCtx;
   }
 
-  // ── Capturar microfone ──────────────────────────────────
   async initMic(deviceId = null) {
     try {
       const constraints = {
-        audio: deviceId
-          ? { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-          : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: {
+          deviceId:         deviceId ? { exact: deviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl:  false,
+          sampleRate:       48000,
+          channelCount:     1,
+        },
         video: false,
       };
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      this._initVAD();
-      console.log('[WebRTC] Microfone capturado');
+      this._buildAudioChain();
+      console.log('[WebRTC] Microfone capturado + pipeline de ruído ativo');
       return true;
     } catch (err) {
-      console.error('[WebRTC] Erro ao capturar microfone:', err.message);
+      console.error('[WebRTC] Erro mic:', err.message);
       return false;
     }
   }
 
-  // ── VAD — Voice Activity Detection ─────────────────────
-  _initVAD() {
+  // Pipeline: source → highpass → lowpass → compressor → gain → analyser + destino processado
+  _buildAudioChain() {
     if (!this.localStream) return;
-    try {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source      = this.audioContext.createMediaStreamSource(this.localStream);
-      this.analyser     = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 512;
+    const ctx = this._getCtx();
+    const source = ctx.createMediaStreamSource(this.localStream);
 
-      // Nó de ganho para controlar volume do microfone
-      this._micGain = this.audioContext.createGain();
-      this._micGain.gain.value = 1.0;
-      source.connect(this._micGain);
-      this._micGain.connect(this.analyser);
+    // Highpass: remove hum/ruído baixo
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 85; hp.Q.value = 0.7;
 
-      const data = new Uint8Array(this.analyser.frequencyBinCount);
-      let speaking = false;
-      let silenceFrames = 0;
+    // Lowpass: remove chiado alto
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 8000; lp.Q.value = 0.7;
 
-      const check = () => {
-        this.analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length;
-        const isSpeaking = avg > 18 && this.micOn;
+    // Compressor: iguala volume, reduz picos
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -24; comp.knee.value = 10;
+    comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.25;
 
-        if (isSpeaking !== speaking) {
-          if (isSpeaking) {
-            speaking = true;
-            silenceFrames = 0;
-            this.onSpeaking?.(true);
-            this.socket.emit('audio:speaking', { speaking: true });
-          } else {
-            silenceFrames++;
-            if (silenceFrames > 8) { // ~240ms de silêncio
-              speaking = false;
-              this.onSpeaking?.(false);
-              this.socket.emit('audio:speaking', { speaking: false });
-            }
-          }
-        } else if (!isSpeaking) {
-          silenceFrames = Math.min(silenceFrames + 1, 999);
+    // Gain: controle manual
+    this._micGain = ctx.createGain();
+    this._micGain.gain.value = 1.0;
+
+    // Analyser: VAD
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 512;
+
+    // Destino processado (stream que vai para os peers)
+    const dest = ctx.createMediaStreamDestination();
+
+    source.connect(hp).connect(lp).connect(comp).connect(this._micGain);
+    this._micGain.connect(this.analyser);
+    this._micGain.connect(dest);
+
+    // Substitui track original pelo stream processado
+    const processed = dest.stream.getAudioTracks()[0];
+    if (processed) {
+      const old = this.localStream.getAudioTracks()[0];
+      if (old) { this.localStream.removeTrack(old); old.stop(); }
+      this.localStream.addTrack(processed);
+    }
+
+    this._startVAD();
+  }
+
+  _startVAD() {
+    if (!this.analyser) return;
+    const data = new Uint8Array(this.analyser.frequencyBinCount);
+    let speaking = false, silence = 0;
+    const check = () => {
+      this.analyser.getByteFrequencyData(data);
+      const s = Math.floor(300  / 24000 * data.length);
+      const e = Math.floor(3400 / 24000 * data.length);
+      let sum = 0;
+      for (let i = s; i < e; i++) sum += data[i];
+      const avg = sum / (e - s);
+      const isSp = avg > 20 && this.micOn;
+      if (isSp && !speaking) {
+        speaking = true; silence = 0;
+        this.onSpeaking?.(true); this.socket.emit('audio:speaking', { speaking: true });
+      } else if (!isSp && speaking) {
+        if (++silence > 10) {
+          speaking = false;
+          this.onSpeaking?.(false); this.socket.emit('audio:speaking', { speaking: false });
         }
-        this.vadTimer = requestAnimationFrame(check);
-      };
-      check();
-    } catch (err) {
-      console.warn('[WebRTC] VAD init error:', err.message);
+      } else if (!isSp) silence = Math.min(silence + 1, 999);
+      this.vadTimer = requestAnimationFrame(check);
+    };
+    check();
+  }
+
+  setMicVolume(value) {
+    const v = Math.max(0, Math.min(2, value));
+    if (this._micGain && this.audioCtx) {
+      this._micGain.gain.setTargetAtTime(v, this.audioCtx.currentTime, 0.02);
+      console.log('[WebRTC] Mic volume:', v);
     }
   }
 
-  // ── Conectar com peers ──────────────────────────────────
-  async connectToPeers(peers) {
-    for (const peerId of peers) {
-      await this._createOffer(peerId);
+  setPeerVolume(peerId, volume) {
+    const v = Math.max(0, Math.min(2, volume));
+    this._peerVolumes.set(peerId, v);
+    const peer = this.peers.get(peerId);
+    if (peer?.gainNode && this.audioCtx) {
+      peer.gainNode.gain.setTargetAtTime(v, this.audioCtx.currentTime, 0.05);
     }
+    if (peer?.audioEl) peer.audioEl.volume = Math.min(1, v);
+    console.log(`[WebRTC] Volume de ${peerId}: ${Math.round(v*100)}%`);
+  }
+
+  getPeerVolume(peerId) { return this._peerVolumes.get(peerId) ?? 1.0; }
+
+  async connectToPeers(peers) {
+    for (const peerId of peers) await this._createOffer(peerId);
   }
 
   async _createOffer(peerId) {
     const pc = this._createPC(peerId);
     try {
-      const offer  = await pc.createOffer({ offerToReceiveAudio: true });
+      const offer = await pc.createOffer({ offerToReceiveAudio: true });
       await pc.setLocalDescription(offer);
       this.socket.emit('rtc:offer', { to: peerId, offer });
-      console.log(`[WebRTC] Offer enviado para ${peerId}`);
-    } catch (err) {
-      console.error('[WebRTC] createOffer error:', err.message);
-    }
+    } catch (err) { console.error('[WebRTC] offer error:', err.message); }
   }
 
   _createPC(peerId) {
-    if (this.peers.has(peerId)) this.peers.get(peerId).close();
+    const ex = this.peers.get(peerId);
+    if (ex?.pc) ex.pc.close();
 
     const pc = new RTCPeerConnection(this.iceConfig);
-    this.peers.set(peerId, pc);
+    this.peers.set(peerId, { pc, gainNode: null, audioEl: null });
 
-    // Adiciona faixas locais
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => pc.addTrack(track, this.localStream));
+      this.localStream.getTracks().forEach(t => pc.addTrack(t, this.localStream));
     }
 
-    // ICE candidates
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        this.socket.emit('rtc:ice', { to: peerId, candidate });
-      }
+      if (candidate) this.socket.emit('rtc:ice', { to: peerId, candidate });
     };
 
-    // Receber áudio remoto
     pc.ontrack = ({ streams }) => {
-      const stream = streams[0];
-      if (!stream) return;
+      const stream = streams[0]; if (!stream) return;
       let audio = document.getElementById(`audio-${peerId}`);
       if (!audio) {
         audio = document.createElement('audio');
-        audio.id    = `audio-${peerId}`;
-        audio.autoplay = true;
+        audio.id = `audio-${peerId}`; audio.autoplay = true;
         document.body.appendChild(audio);
       }
-      audio.srcObject = stream;
-      audio.muted = this.deafOn;
-      console.log(`[WebRTC] Áudio recebido de ${peerId}`);
+      // Volume por usuário via GainNode
+      try {
+        const ctx    = this._getCtx();
+        const src    = ctx.createMediaStreamSource(stream);
+        const gain   = ctx.createGain();
+        gain.gain.value = this.deafOn ? 0 : (this._peerVolumes.get(peerId) ?? 1.0);
+        src.connect(gain).connect(ctx.destination);
+        const peer = this.peers.get(peerId);
+        if (peer) { peer.gainNode = gain; peer.audioEl = audio; }
+        audio.muted = true; // output vai pelo ctx.destination
+        audio.srcObject = stream;
+      } catch {
+        audio.srcObject = stream;
+        audio.volume = Math.min(1, this._peerVolumes.get(peerId) ?? 1.0);
+        audio.muted  = this.deafOn;
+      }
+      console.log(`[WebRTC] Áudio de ${peerId}`);
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC] ${peerId}: ${pc.connectionState}`);
-      if (pc.connectionState === 'failed') {
-        pc.restartIce();
-      }
+      if (pc.connectionState === 'failed') pc.restartIce();
     };
 
     return pc;
   }
 
-  // ── Eventos Socket ──────────────────────────────────────
   _bindSocketEvents() {
     this.socket.on('rtc:offer', async ({ from, offer }) => {
       const pc = this._createPC(from);
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        this.socket.emit('rtc:answer', { to: from, answer });
-        console.log(`[WebRTC] Answer enviado para ${from}`);
-      } catch (err) {
-        console.error('[WebRTC] answer error:', err.message);
-      }
+        const ans = await pc.createAnswer();
+        await pc.setLocalDescription(ans);
+        this.socket.emit('rtc:answer', { to: from, answer: ans });
+      } catch (err) { console.error('[WebRTC] answer error:', err.message); }
     });
 
     this.socket.on('rtc:answer', async ({ from, answer }) => {
-      const pc = this.peers.get(from);
-      if (!pc) return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      } catch (err) {
-        console.error('[WebRTC] setRemoteDescription error:', err.message);
-      }
+      const peer = this.peers.get(from); if (!peer?.pc) return;
+      try { await peer.pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch {}
     });
 
     this.socket.on('rtc:ice', async ({ from, candidate }) => {
-      const pc = this.peers.get(from);
-      if (!pc) return;
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (err) {
-        console.warn('[WebRTC] addIceCandidate:', err.message);
-      }
+      const peer = this.peers.get(from); if (!peer?.pc) return;
+      try { await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
     });
 
-    this.socket.on('voice:peer:left', ({ socketId }) => {
-      this._removePeer(socketId);
-    });
+    this.socket.on('voice:peer:left', ({ socketId }) => this._removePeer(socketId));
   }
 
   _removePeer(peerId) {
-    const pc = this.peers.get(peerId);
-    if (pc) { pc.close(); this.peers.delete(peerId); }
-    const audio = document.getElementById(`audio-${peerId}`);
-    if (audio) audio.remove();
-    console.log(`[WebRTC] Peer removido: ${peerId}`);
+    const peer = this.peers.get(peerId);
+    if (peer?.pc) peer.pc.close();
+    this.peers.delete(peerId);
+    document.getElementById(`audio-${peerId}`)?.remove();
   }
 
-  // ── Toggle mic ──────────────────────────────────────────
   setMic(enabled) {
     this.micOn = enabled;
-    if (this.localStream) {
-      this.localStream.getAudioTracks().forEach(t => (t.enabled = enabled));
-    }
+    this.localStream?.getAudioTracks().forEach(t => t.enabled = enabled);
   }
 
-  // ── Toggle deafen ───────────────────────────────────────
   setDeaf(deafed) {
     this.deafOn = deafed;
-    document.querySelectorAll('[id^="audio-"]').forEach(a => (a.muted = deafed));
-  }
-
-  // ── Trocar microfone ────────────────────────────────────
-  async changeMic(deviceId) {
-    await this._stopLocal();
-    await this.initMic(deviceId);
-    // Re-adiciona tracks em todos peers
-    this.peers.forEach(async (pc) => {
-      const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
-      if (sender && this.localStream) {
-        const newTrack = this.localStream.getAudioTracks()[0];
-        if (newTrack) await sender.replaceTrack(newTrack);
+    this.peers.forEach((peer, peerId) => {
+      if (peer.gainNode && this.audioCtx) {
+        const vol = deafed ? 0 : (this._peerVolumes.get(peerId) ?? 1.0);
+        peer.gainNode.gain.setTargetAtTime(vol, this.audioCtx.currentTime, 0.05);
       }
+      if (peer.audioEl) peer.audioEl.muted = deafed;
     });
   }
 
-  // ── Cleanup ─────────────────────────────────────────────
+  async changeMic(deviceId) {
+    if (this.vadTimer) cancelAnimationFrame(this.vadTimer);
+    this.localStream?.getTracks().forEach(t => t.stop());
+    await this.initMic(deviceId);
+    this.peers.forEach(async (peer) => {
+      const sender = peer.pc?.getSenders().find(s => s.track?.kind === 'audio');
+      const newTrack = this.localStream?.getAudioTracks()[0];
+      if (sender && newTrack) await sender.replaceTrack(newTrack).catch(() => {});
+    });
+  }
+
   async disconnect() {
     if (this.vadTimer) cancelAnimationFrame(this.vadTimer);
-    if (this.audioContext) await this.audioContext.close().catch(() => {});
-    await this._stopLocal();
-    this.peers.forEach((pc, id) => this._removePeer(id));
+    await this.audioCtx?.close().catch(() => {});
+    this.audioCtx = null;
+    this.localStream?.getTracks().forEach(t => t.stop());
+    this.localStream = null;
+    this.peers.forEach((_, id) => this._removePeer(id));
     this.peers.clear();
-    console.log('[WebRTC] Desconectado');
   }
 
-  async _stopLocal() {
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(t => t.stop());
-      this.localStream = null;
-    }
-  }
-
-  // ── Listar dispositivos ─────────────────────────────────
   static async getDevices() {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true }); // pede permissão
-      const devices = await navigator.mediaDevices.enumerateDevices();
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devs = await navigator.mediaDevices.enumerateDevices();
       return {
-        inputs:  devices.filter(d => d.kind === 'audioinput'),
-        outputs: devices.filter(d => d.kind === 'audiooutput'),
+        inputs:  devs.filter(d => d.kind === 'audioinput'),
+        outputs: devs.filter(d => d.kind === 'audiooutput'),
       };
-    } catch {
-      return { inputs: [], outputs: [] };
-    }
+    } catch { return { inputs: [], outputs: [] }; }
   }
 }
 

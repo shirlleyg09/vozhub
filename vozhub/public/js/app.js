@@ -194,7 +194,8 @@ socket.on('music:searching', ({ source }) => {
   const id = source === 'soundcloud' ? 'sc-results' : 'yt-results';
   document.getElementById(id).innerHTML = '<div class="search-loading">🔍 Buscando...</div>';
 });
-socket.on('music:sc:results', ({ results, error }) => renderSearchResults('sc-results', results, error, 'sc'));
+socket.on('music:sc:results',      ({ results, error }) => renderSearchResults('sc-results', results, error, 'sc'));
+socket.on('music:jamendo:results', ({ results, error }) => renderSearchResults('jm-results', results, error, 'jamendo'));
 socket.on('music:yt:results', ({ results, error }) => renderSearchResults('yt-results', results, error, 'yt'));
 socket.on('error',  ({ msg }) => toast('❌ ' + msg));
 socket.on('kicked', ({ reason }) => { toast('🚫 '+reason); S.connected=false; rtc?.disconnect(); S.users=[]; rAll(); });
@@ -288,7 +289,15 @@ function rStage() {
     card.setAttribute('data-sid', u.socketId||'');
     card.innerHTML = `<div class="av-wrap"><div class="pc-av ${avc(u.name)}">${ini(u.name)}</div><div class="sp-ring"></div><div class="av-badge">${mt?'🔇':'🎤'}</div></div>
       <div class="pc-nm">${u.name}${isMe?' (você)':''}</div>
-      <div class="pc-st ${sp?'sp':mt?'mt':''}">${sp?'🟢 Falando':mt?'🔇 Mudo':'⬜ Conectado'}</div>`;
+      <div class="pc-st ${sp?'sp':mt?'mt':''}">${sp?'🟢 Falando':mt?'🔇 Mudo':'⬜ Conectado'}</div>
+      `;
+    // Clique direito no card abre controle de volume
+    if (!isMe && u.socketId) {
+      card.addEventListener('contextmenu', ev => {
+        ev.preventDefault();
+        openPeerVolume(u.socketId, u.name, ev);
+      });
+    }
     grid.appendChild(card);
   });
   sec.appendChild(grid); stage.appendChild(sec);
@@ -327,6 +336,44 @@ function leaveVoice() {
   rtc?.disconnect(); S.users = []; rAll(); toast('🚪 Saiu do canal');
 }
 
+/* ── Volume por usuário (igual Discord) ─────────────── */
+function openPeerVolume(peerId, name, event) {
+  event.stopPropagation();
+  // Remove popup anterior
+  document.getElementById('peer-vol-popup')?.remove();
+
+  const currentVol = Math.round((rtc?.getPeerVolume(peerId) ?? 1.0) * 100);
+  const popup = document.createElement('div');
+  popup.id = 'peer-vol-popup';
+  popup.className = 'peer-vol-popup';
+  popup.innerHTML = `
+    <div class="pvp-title">🔊 Volume de ${name}</div>
+    <div class="pvp-row">
+      <span class="pvp-min">0%</span>
+      <input type="range" class="pvp-slider" min="0" max="200" value="${currentVol}"
+        oninput="setPeerVol('${peerId}', this.value, this.parentElement.nextElementSibling)">
+      <span class="pvp-max">200%</span>
+    </div>
+    <div class="pvp-val">${currentVol}%</div>
+    <button class="pvp-close" onclick="document.getElementById('peer-vol-popup')?.remove()">Fechar</button>`;
+
+  // Posiciona perto do clique
+  const rect = event.target.getBoundingClientRect();
+  popup.style.cssText = `position:fixed;left:${Math.min(rect.left, window.innerWidth-200)}px;top:${rect.top-160}px;z-index:600`;
+  document.body.appendChild(popup);
+
+  // Fecha ao clicar fora
+  setTimeout(() => {
+    document.addEventListener('click', () => document.getElementById('peer-vol-popup')?.remove(), { once: true });
+  }, 100);
+}
+
+function setPeerVol(peerId, value, valEl) {
+  const pct = parseInt(value);
+  if (valEl) valEl.textContent = pct + '%';
+  rtc?.setPeerVolume(peerId, pct / 100);
+}
+
 function toggleMicVol() {
   const p = document.getElementById('mic-vol-panel');
   if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
@@ -340,7 +387,12 @@ function toggleMicVolSidebar() {
 function setMicVolume(val) {
   const pct = parseInt(val);
   document.getElementById('mic-vol-val').textContent = pct + '%';
-  if (rtc) rtc.setMicVolume(pct / 100);
+  if (rtc) {
+    rtc.setMicVolume(pct / 100);
+    console.log('[App] Mic volume set to', pct + '%');
+  } else {
+    console.warn('[App] rtc não inicializado ainda');
+  }
 }
 
 function toggleMic() {
@@ -373,12 +425,9 @@ document.addEventListener('keydown', e => {
 });
 
 /* ── Music Bar ─────────────────────────────────────────── */
+// Controles de música — sem delay, emite direto
 function sendMusicEv(ev, data={}) {
-  // Controles de música funcionam se estiver conectado OU se houver música tocando
-  if (!S.connected && !S.music?.playing) {
-    toast('⚠️ Entre em um canal de voz primeiro');
-    return;
-  }
+  if (!S.connected) { toast('⚠️ Entre em um canal de voz primeiro'); return; }
   socket.emit(ev, data);
 }
 
@@ -421,28 +470,40 @@ function updateMusicUI() {
     progIv = setInterval(() => { localProg=Math.min(localProg+.25, t.duration); updProg(); }, 250);
   }
   // Tocar áudio — rádios e links tocam direto no cliente
-  // YouTube/SC vai via BotAudioPlayer (chunks do servidor quando ffmpeg disponível)
   const streamUrl = t.streamUrl || t.url || '';
-  if (m.playing && !m.paused && streamUrl && (t.type === 'radio' || t.type === 'url' || t.type === 'mp3')) {
+  const isDirectPlay = t.type === 'radio' || t.type === 'url' || t.type === 'mp3';
+
+  if (m.playing && !m.paused && streamUrl && isDirectPlay) {
     if (audio.dataset.url !== streamUrl) {
-      audio.dataset.url = streamUrl;
-      audio.preload = t.isLive ? 'none' : 'auto';
-      audio.src = streamUrl;
-      audio.volume = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
-      audio.muted  = S.localMuted;
-      audio.play().catch(e => {
-        if (e.name === 'NotAllowedError') {
-          toast('🔊 Clique em qualquer lugar para ativar o áudio');
-          document.addEventListener('click', () => {
-            window._botAudio?.unlock();
-            audio.play().catch(()=>{});
-          }, { once: true });
-        }
-      });
+      // PARA completamente antes de trocar — evita overlap
+      audio.pause();
+      audio.src = '';
+      audio.load();
+      // Aguarda um frame antes de tocar o novo
+      setTimeout(() => {
+        audio.dataset.url = streamUrl;
+        audio.preload     = t.isLive ? 'none' : 'auto';
+        audio.src         = streamUrl;
+        audio.volume      = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
+        audio.muted       = S.localMuted;
+        audio.play().catch(e => {
+          if (e.name === 'NotAllowedError') {
+            toast('🔊 Clique aqui para ativar o áudio');
+            document.addEventListener('click', () => {
+              window._botAudio?.unlock();
+              audio.play().catch(()=>{});
+            }, { once: true });
+          }
+        });
+      }, 80);
     }
   } else if (!m.playing || m.paused) {
     audio.pause();
-    if (!m.playing) { audio.src = ''; audio.dataset.url = ''; }
+    if (!m.playing) {
+      audio.src = '';
+      audio.dataset.url = '';
+      audio.load();
+    }
   }
 }
 
@@ -616,6 +677,15 @@ function doSCSearch() {
 }
 document.getElementById('sc-in').addEventListener('keydown', e => { if (e.key==='Enter') doSCSearch(); });
 
+/* ── Jamendo ───────────────────────────────────────────── */
+function doJamendoSearch() {
+  const q = document.getElementById('jm-in').value.trim(); if (!q) return;
+  if (!S.connected) { toast('⚠️ Entre em um canal primeiro'); return; }
+  socket.emit('music:search:jamendo', { query: q });
+  document.getElementById('jm-results').innerHTML = '<div class="search-loading">🔍 Buscando no Jamendo...</div>';
+}
+document.getElementById('jm-in')?.addEventListener('keydown', e => { if (e.key === 'Enter') doJamendoSearch(); });
+
 /* ── YouTube ───────────────────────────────────────────── */
 function doYTSearch() {
   const q = document.getElementById('yt-in').value.trim(); if (!q) return;
@@ -635,20 +705,27 @@ function renderSearchResults(containerId, results, error, source) {
   if (!results?.length) { c.innerHTML = '<div class="search-loading">Nenhum resultado.</div>'; return; }
   results.forEach(r => {
     const item = document.createElement('div'); item.className = 'search-item';
+    const srcEmoji = source==='sc'?'☁️':source==='jamendo'?'🎼':'▶️';
+    const srcColor = source==='sc'?'sc':source==='jamendo'?'jm':'';
     item.innerHTML = `
-      <div class="si-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="">`:r.emoji||'🎵'}</div>
+      <div class="si-thumb">${r.thumbnail?`<img src="${r.thumbnail}" alt="">`:(r.emoji||srcEmoji)}</div>
       <div class="si-info">
         <div class="si-title">${r.title}</div>
-        <div class="si-meta">${r.artist||''} · ${r.durationFmt||'?'}</div>
+        <div class="si-meta">${r.artist||''} · ${r.durationFmt||'?'} · ${source==='jamendo'?'🎼 Jamendo (CC)':source==='sc'?'☁️ SoundCloud':'▶️'}</div>
       </div>
-      <button class="si-add ${source==='sc'?'sc':''}">+ Fila</button>`;
+      <button class="si-add ${srcColor}">+ Fila</button>`;
     item.querySelector('.si-add').onclick = () => {
-      if (source==='sc') {
+      if (source === 'sc') {
         socket.emit('music:add:sc', { url:r.url, title:r.title, artist:r.artist, duration:r.duration, thumbnail:r.thumbnail });
+        toast(`☁️ Adicionando: ${r.title}`);
+      } else if (source === 'jamendo') {
+        socket.emit('music:add:jamendo', { streamUrl:r.streamUrl, url:r.url, title:r.title, artist:r.artist, duration:r.duration, thumbnail:r.thumbnail });
+        toast(`🎼 Adicionando: ${r.title}`);
       } else {
         socket.emit('music:add:yt', { url:r.url });
+        toast(`▶️ Adicionando: ${r.title}`);
       }
-      closeMo('mo-music'); toast(`${source==='sc'?'☁️':'▶️'} Adicionando: ${r.title}`);
+      closeMo('mo-music');
     };
     c.appendChild(item);
   });

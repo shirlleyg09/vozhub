@@ -297,3 +297,23 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 
 /* Remove estilo antigo do panel horizontal */
 .mic-vol-panel{display:none !important}
+
+/* ── Volume por usuário (Discord style) ──────────────── */
+.pc-vol-btn{font-size:.7rem;cursor:pointer;opacity:0;transition:opacity .15s;padding:3px;border-radius:4px;line-height:1}
+.pc-card:hover .pc-vol-btn{opacity:.7}
+.pc-card:hover .pc-vol-btn:hover{opacity:1;background:var(--bg-hover)}
+
+.peer-vol-popup{background:var(--bg-float);border:1px solid var(--border-lit);border-radius:var(--r-lg);padding:16px;min-width:200px;box-shadow:0 20px 60px rgba(0,0,0,.7)}
+.pvp-title{font-size:.82rem;font-weight:700;color:var(--t2);margin-bottom:12px;text-align:center}
+.pvp-row{display:flex;align-items:center;gap:8px}
+.pvp-min,.pvp-max{font-size:.68rem;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0}
+.pvp-slider{flex:1;-webkit-appearance:none;height:4px;background:var(--bg-active);border-radius:2px;outline:none;cursor:pointer;accent-color:var(--blue)}
+.pvp-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--blue);cursor:pointer}
+.pvp-val{text-align:center;font-size:.85rem;font-weight:700;color:var(--blue);font-family:'JetBrains Mono',monospace;margin-top:8px}
+.pvp-close{display:block;width:100%;margin-top:10px;padding:6px;border-radius:var(--r-sm);background:var(--bg-raised);border:1px solid var(--border);color:var(--t2);font-family:'Outfit',sans-serif;font-size:.78rem;cursor:pointer;transition:var(--tr)}
+.pvp-close:hover{background:var(--bg-hover);color:var(--t1)}
+
+/* Jamendo tab color */
+.mtab-jm.active { background: linear-gradient(135deg, #36b37e, #00875a); box-shadow: 0 4px 12px rgba(54,179,126,.3); }
+.si-add.jm { background: #36b37e; }
+.si-add.jm:hover { background: #00875a; }

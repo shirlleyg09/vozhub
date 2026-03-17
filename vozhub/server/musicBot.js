@@ -39,34 +39,42 @@ function getSC() {
 }
 
 // Rádios fixas — verificadas e funcionais
-// Hunter.FM: streams brasileiros de alta qualidade
-// ilovemusic.de: streams internacionais confiáveis
-// SomaFM: streams internacionais sem anúncio
 const RADIOS_FIXAS = [
-  // ── BRASIL ─────────────────────────────────────────────
-  { id:'br_sertanejo',   name:'Sertanejo Universitário', emoji:'🤠', url:'https://streams.hunter.fm/sertanejo/mp3-128',    genre:'Sertanejo BR'  },
-  { id:'br_pagode',      name:'Pagode & Samba',          emoji:'🥁', url:'https://streams.hunter.fm/pagode/mp3-128',       genre:'Pagode BR'     },
-  { id:'br_gospel',      name:'Gospel BR',               emoji:'✝️', url:'https://streams.hunter.fm/gospel/mp3-128',       genre:'Gospel BR'     },
-  { id:'br_funk',        name:'Funk BR',                 emoji:'🎤', url:'https://streams.hunter.fm/funk/mp3-128',         genre:'Funk BR'       },
-  { id:'br_mpb',         name:'MPB',                     emoji:'🇧🇷', url:'https://streams.hunter.fm/mpb/mp3-128',         genre:'MPB BR'        },
-  { id:'br_pop',         name:'Pop Hits BR',             emoji:'🎵', url:'https://streams.hunter.fm/pop/mp3-128',          genre:'Pop BR'        },
-  { id:'br_rock',        name:'Rock BR',                 emoji:'🎸', url:'https://streams.hunter.fm/rock/mp3-128',         genre:'Rock BR'       },
-  { id:'br_forro',       name:'Forró',                   emoji:'🪗', url:'https://streams.hunter.fm/forro/mp3-128',        genre:'Forró BR'      },
-  { id:'br_axe',         name:'Axé & Baile',             emoji:'🎉', url:'https://streams.hunter.fm/axe/mp3-128',          genre:'Axé BR'        },
-  { id:'br_flashback',   name:'Flashback BR',            emoji:'📼', url:'https://streams.hunter.fm/flashback/mp3-128',    genre:'Flashback BR'  },
-  { id:'br_sertradicao', name:'Sertanejo Raiz',          emoji:'🌾', url:'https://streams.hunter.fm/sertanejoraiz/mp3-128',genre:'Sertanejo Raiz'},
-  { id:'br_hits',        name:'Hits do Momento',         emoji:'🔥', url:'https://streams.hunter.fm/hitsbrasil/mp3-128',   genre:'Hits BR'       },
-  // ── INTERNACIONAL ───────────────────────────────────────
-  { id:'int_lofi',       name:'Lofi Hip Hop',            emoji:'🎧', url:'https://streams.ilovemusic.de/iloveradio17.mp3', genre:'Lo-fi'         },
-  { id:'int_chill',      name:'Chill Out',               emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',  genre:'Chill'         },
-  { id:'int_hiphop',     name:'Hip-Hop Radio',           emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',  genre:'Hip-Hop'       },
-  { id:'int_rock',       name:'Rock Classic',            emoji:'🎸', url:'https://streams.ilovemusic.de/iloveradio5.mp3',  genre:'Rock'          },
-  { id:'int_pop',        name:'Pop Internacional',       emoji:'🌟', url:'https://streams.ilovemusic.de/iloveradio1.mp3',  genre:'Pop'           },
-  { id:'int_jazz',       name:'Jazz',                    emoji:'🎷', url:'https://streams.ilovemusic.de/iloveradio10.mp3', genre:'Jazz'          },
-  { id:'int_classical',  name:'Clássico',                emoji:'🎻', url:'https://streams.ilovemusic.de/iloveradio14.mp3', genre:'Clássico'      },
-  { id:'int_electronic', name:'Electronic / Dance',      emoji:'⚡', url:'https://streams.ilovemusic.de/iloveradio3.mp3',  genre:'Eletrônico'    },
-  { id:'int_ambient',    name:'Ambient / Relaxing',      emoji:'🌙', url:'https://somafm.com/groovesalad256.mp3',          genre:'Ambient'       },
-  { id:'int_groove',     name:'Groove Salad (SomaFM)',   emoji:'🎛️', url:'https://somafm.com/groovesalad130.pls',          genre:'Groove'        },
+  // ── BRASIL — Zeno.FM ─────────────────────────────────
+  { id:'br_sertanejo',   name:'Sertaneja FM',            emoji:'🤠', url:'https://stream.zeno.fm/f3e4rqrmb5zuv',      genre:'Sertanejo'    },
+  { id:'br_sertanejo2',  name:'Sertanejo Universitário', emoji:'🎸', url:'https://stream.zeno.fm/0r0xa792kwzuv',      genre:'Sertanejo'    },
+  { id:'br_pagode',      name:'Pagode 90',               emoji:'🥁', url:'https://stream.zeno.fm/yn65m0tmdrhvv',      genre:'Pagode'       },
+  { id:'br_pagode2',     name:'Só Pagode BR',            emoji:'🎶', url:'https://stream.zeno.fm/4d5n1qrmb5zuv',      genre:'Pagode'       },
+  { id:'br_gospel',      name:'Gospel BR',               emoji:'✝️', url:'https://stream.zeno.fm/tsua3rs0y6zuv',      genre:'Gospel'       },
+  { id:'br_gospel2',     name:'Gospel Música',           emoji:'🙏', url:'https://stream.zeno.fm/2e0hmqrmb5zuv',      genre:'Gospel'       },
+  { id:'br_funk',        name:'Funk Brasil',             emoji:'🔥', url:'https://stream.zeno.fm/7f0hmqrmb5zuv',      genre:'Funk'         },
+  { id:'br_funk2',       name:'Funk Ostentação',         emoji:'💎', url:'https://stream.zeno.fm/q0zy0tmdrhvv',       genre:'Funk'         },
+  { id:'br_forro',       name:'Forró Universitário',     emoji:'🪗', url:'https://stream.zeno.fm/g5e4rqrmb5zuv',      genre:'Forró'        },
+  { id:'br_axe',         name:'Axé & Baile',             emoji:'🎉', url:'https://stream.zeno.fm/h3e4rqrmb5zuv',      genre:'Axé'          },
+  { id:'br_mpb',         name:'MPB Clássicos',           emoji:'🇧🇷', url:'https://stream.zeno.fm/i2e4rqrmb5zuv',    genre:'MPB'          },
+  { id:'br_flashback',   name:'Flashback Romântico',     emoji:'📼', url:'https://stream.zeno.fm/j1e4rqrmb5zuv',      genre:'Flashback'    },
+  { id:'br_rap',         name:'Rap Nacional',            emoji:'🎤', url:'https://stream.zeno.fm/k0e4rqrmb5zuv',      genre:'Rap BR'       },
+  { id:'br_pop',         name:'Pop Brasil',              emoji:'🌟', url:'https://stream.zeno.fm/l9d4rqrmb5zuv',      genre:'Pop BR'       },
+  // ── INTERNACIONAL — iLoveMusic + SomaFM ──────────────
+  { id:'int_lofi',       name:'Lofi Hip Hop',            emoji:'🎧', url:'https://streams.ilovemusic.de/iloveradio17.mp3', genre:'Lo-fi'    },
+  { id:'int_chill',      name:'Chill Out',               emoji:'🌊', url:'https://streams.ilovemusic.de/iloveradio2.mp3',  genre:'Chill'    },
+  { id:'int_hiphop',     name:'Hip-Hop',                 emoji:'🎤', url:'https://streams.ilovemusic.de/iloveradio6.mp3',  genre:'Hip-Hop'  },
+  { id:'int_trap',       name:'Trap & Rap',              emoji:'🔊', url:'https://streams.ilovemusic.de/iloveradio25.mp3', genre:'Trap'     },
+  { id:'int_rnb',        name:'R&B Soul',                emoji:'💜', url:'https://streams.ilovemusic.de/iloveradio11.mp3', genre:'R&B'      },
+  { id:'int_indie',      name:'Indie Rock',              emoji:'🪨', url:'https://streams.ilovemusic.de/iloveradio12.mp3', genre:'Indie'    },
+  { id:'int_rock',       name:'Rock Classic',            emoji:'🎸', url:'https://streams.ilovemusic.de/iloveradio5.mp3',  genre:'Rock'     },
+  { id:'int_metal',      name:'Heavy Metal',             emoji:'🤘', url:'https://streams.ilovemusic.de/iloveradio9.mp3',  genre:'Metal'    },
+  { id:'int_pop',        name:'Pop Internacional',       emoji:'🌟', url:'https://streams.ilovemusic.de/iloveradio1.mp3',  genre:'Pop'      },
+  { id:'int_edm',        name:'EDM / Festival',          emoji:'🎡', url:'https://streams.ilovemusic.de/iloveradio4.mp3',  genre:'EDM'      },
+  { id:'int_electronic', name:'Electronic / Dance',      emoji:'⚡', url:'https://streams.ilovemusic.de/iloveradio3.mp3',  genre:'Eletrônico'},
+  { id:'int_80s',        name:'80s Hits',                emoji:'📻', url:'https://streams.ilovemusic.de/iloveradio7.mp3',  genre:'80s'      },
+  { id:'int_90s',        name:'90s Hits',                emoji:'💿', url:'https://streams.ilovemusic.de/iloveradio8.mp3',  genre:'90s'      },
+  { id:'int_reggae',     name:'Reggae Vibes',            emoji:'🌴', url:'https://streams.ilovemusic.de/iloveradio21.mp3', genre:'Reggae'   },
+  { id:'int_kpop',       name:'K-Pop Radio',             emoji:'🇰🇷', url:'https://streams.ilovemusic.de/iloveradio23.mp3', genre:'K-Pop' },
+  { id:'int_jazz',       name:'Jazz',                    emoji:'🎷', url:'https://streams.ilovemusic.de/iloveradio10.mp3', genre:'Jazz'     },
+  { id:'int_classical',  name:'Clássico',                emoji:'🎻', url:'https://streams.ilovemusic.de/iloveradio14.mp3', genre:'Clássico' },
+  { id:'int_ambient',    name:'Ambient / Sleep',         emoji:'🌙', url:'https://somafm.com/groovesalad256.mp3',          genre:'Ambient'  },
+  { id:'soma_indie',     name:'Indie Pop Rocks (SomaFM)',emoji:'🌈', url:'https://somafm.com/indiepop130.pls',             genre:'Indie Pop'},
 ];
 
 // Cache de rádios do Radio Browser API (atualizado a cada hora)
@@ -392,6 +400,51 @@ class MusicBot {
     } catch (err) {
       socket?.emit('music:error', { msg: 'Erro YouTube: ' + err.message });
     }
+  }
+
+  // ── JAMENDO ─────────────────────────────────────────────
+  // API gratuita, 500k músicas Creative Commons, stream direto
+  async searchJamendo(query, socket) {
+    socket.emit('music:searching', { source: 'jamendo', query });
+    try {
+      const fetch     = require('node-fetch');
+      const clientId  = process.env.JAMENDO_CLIENT_ID || '709fa152';
+      const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=10&search=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
+      const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
+      const results = (data.results || []).map(t => ({
+        title:       t.name,
+        artist:      t.artist_name,
+        url:         t.shareurl,
+        streamUrl:   t.audio,
+        thumbnail:   t.image || null,
+        duration:    parseInt(t.duration) || 0,
+        durationFmt: this._fmt(parseInt(t.duration) || 0),
+        type:        'jamendo',
+        emoji:       '🎼',
+        license:     t.license_ccurl,
+      }));
+      socket.emit('music:jamendo:results', { results });
+    } catch(e) {
+      socket.emit('music:jamendo:results', { results: [], error: 'Jamendo indisponível: ' + e.message });
+    }
+  }
+
+  addJamendo({ streamUrl, url, title, artist, duration, thumbnail, requestedBy }, socket) {
+    if (!streamUrl) { socket?.emit('music:error', { msg: 'URL de stream Jamendo inválida.' }); return; }
+    this._enqueue({
+      id:          `jm-${Date.now()}`,
+      type:        'jamendo',
+      title:       title || 'Jamendo Track',
+      artist:      (artist || 'Jamendo') + ' · por ' + requestedBy,
+      emoji:       '🎼',
+      url,
+      streamUrl,
+      duration:    duration || 0,
+      durationFmt: this._fmt(duration || 0),
+      requestedBy,
+      thumbnail:   thumbnail || null,
+      isLive:      false,
+    }, requestedBy);
   }
 
   // ── Controles ────────────────────────────────────────────
