@@ -60,6 +60,19 @@ function playSound(type) {
   } catch(e) { console.warn('sound:', e.message); }
 }
 
+// Som de mensagem de chat (beep suave)
+function playMsgSound() {
+  try {
+    const ctx = getACtx(); if (ctx.state === 'suspended') return;
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.08, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.12);
+    o.start(); o.stop(ctx.currentTime + 0.15);
+  } catch {}
+}
+
 /* ── Sessão persistente ────────────────────────────────── */
 const saveSession  = n => { try { localStorage.setItem('vozhub_name', n); } catch {} };
 const clearSession = () => { try { localStorage.removeItem('vozhub_name'); } catch {} };
@@ -422,15 +435,24 @@ function toggleMic() {
 function toggleDeaf() {
   S.deafOn = !S.deafOn;
   rtc?.setDeaf(S.deafOn);
-  // Também silencia a música quando surdo
+  // Silencia música
   const audio = document.getElementById('music-audio');
   if (audio) audio.muted = S.deafOn;
   window._botAudio?.mute(S.deafOn);
+  // Se surdou → desativa mic automaticamente
+  if (S.deafOn && S.micOn) {
+    S.micOn = false;
+    rtc?.setMic(false);
+    const mb = document.getElementById('mic-btn');
+    mb.textContent = '🔇'; mb.classList.add('red');
+    socket.emit('audio:toggle', { micOn: false });
+  }
   const b = document.getElementById('deaf-btn');
   b.textContent = S.deafOn ? '🔇' : '🔊';
   b.classList.toggle('red', S.deafOn);
   socket.emit('audio:toggle', { deafOn: S.deafOn });
-  toast(S.deafOn ? '🔇 Som desativado (você não ouve ninguém)' : '🔊 Som ativado');
+  toast(S.deafOn ? '🔇 Som + microfone desativados' : '🔊 Som ativado');
+  rStage();
 }
 
 document.addEventListener('keydown', e => {
@@ -837,4 +859,106 @@ function copyInvite() {
   navigator.clipboard.writeText(window.location.href)
     .then(() => toast('🔗 Link copiado!'))
     .catch(() => toast('🔗 Copie o link da barra de endereços!'));
+}
+
+/* ── Compartilhamento de Tela ──────────────────────────── */
+// Funciona com Netflix, Prime, qualquer aba ou janela do computador
+// Usa WebRTC getDisplayMedia → transmite para todos os peers no canal
+
+let _screenStream = null;
+let _screenPC     = new Map(); // peerId -> RTCPeerConnection para screen
+let _screenSharing = false;
+
+async function toggleScreenShare() {
+  if (_screenSharing) { stopScreenShare(); return; }
+  if (!S.connected) { toast('⚠️ Entre em um canal de voz primeiro'); return; }
+  try {
+    // Captura tela — abre seletor do SO (qualquer aba, janela, Netflix, etc.)
+    _screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 }, cursor: 'always' },
+      audio: { echoCancellation: false, noiseSuppression: false }, // captura áudio do sistema
+    });
+    _screenSharing = true;
+
+    // Notifica servidor → server avisa os outros peers
+    socket.emit('screen:start');
+
+    // Adiciona tracks de tela em todas as peer connections existentes
+    if (rtc?.peers) {
+      for (const [peerId, peer] of rtc.peers) {
+        try {
+          _screenStream.getTracks().forEach(track => {
+            peer.pc.addTrack(track, _screenStream);
+          });
+          // Re-negocia para os peers receberem o novo stream
+          const offer = await peer.pc.createOffer();
+          await peer.pc.setLocalDescription(offer);
+          socket.emit('rtc:offer', { to: peerId, offer });
+        } catch(e) { console.warn('[Screen] add track error:', e.message); }
+      }
+    }
+
+    const btn = document.getElementById('screen-btn');
+    if (btn) { btn.textContent = '🔴 Parar compartilhamento'; btn.style.color = 'var(--red)'; }
+    toast('🖥️ Compartilhando tela — todos podem ver!');
+
+    // Para quando o usuário clica em "Parar" no banner do SO
+    _screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
+  } catch(e) {
+    if (e.name !== 'NotAllowedError') toast('❌ ' + e.message);
+  }
+}
+
+function stopScreenShare() {
+  if (_screenStream) {
+    _screenStream.getTracks().forEach(t => t.stop());
+    _screenStream = null;
+  }
+  _screenSharing = false;
+  socket.emit('screen:stop');
+  const btn = document.getElementById('screen-btn');
+  if (btn) { btn.textContent = '🖥️ Compartilhar tela'; btn.style.color = ''; }
+  // Remove vídeo da tela
+  document.getElementById('screen-overlay').style.display = 'none';
+  toast('🖥️ Compartilhamento encerrado');
+}
+
+// Recebe notificação que alguém começou a compartilhar
+socket.on('screen:start', ({ socketId, name }) => {
+  toast(`🖥️ ${name} está compartilhando a tela — abrindo...`);
+  const overlay = document.getElementById('screen-overlay');
+  const title   = document.getElementById('screen-title');
+  const badge   = document.getElementById('screen-badge');
+  const body    = document.getElementById('screen-body');
+  if (title) title.textContent = `🖥️ Tela de ${name}`;
+  if (badge) badge.textContent = '👁 Assistindo';
+  if (body)  body.innerHTML = '<div class="screen-empty" id="screen-wait">⏳ Aguardando stream de vídeo...<br><small>O vídeo aparece assim que a conexão WebRTC for estabelecida</small></div>';
+  overlay.style.display = 'flex';
+  // O vídeo chega via WebRTC ontrack — tratado no webrtc.js
+  // Aqui só monitoramos para exibir quando chegar
+  window._pendingScreenFrom = socketId;
+});
+
+socket.on('screen:stop', ({ socketId, name }) => {
+  const overlay = document.getElementById('screen-overlay');
+  overlay.style.display = 'none';
+  document.getElementById(`screen-video-${socketId}`)?.remove();
+  toast(`🖥️ ${name || 'Usuário'} encerrou o compartilhamento`);
+});
+
+// Chamado pelo webrtc.js quando chega um stream de vídeo de tela
+function onScreenTrack(peerId, stream) {
+  const body = document.getElementById('screen-body'); if (!body) return;
+  document.getElementById('screen-wait')?.remove();
+  let vid = document.getElementById(`screen-video-${peerId}`);
+  if (!vid) {
+    vid = document.createElement('video');
+    vid.id = `screen-video-${peerId}`;
+    vid.className = 'screen-video';
+    vid.autoplay = true; vid.controls = true; vid.playsInline = true;
+    body.appendChild(vid);
+  }
+  vid.srcObject = stream;
+  vid.play().catch(() => {});
+  document.getElementById('screen-overlay').style.display = 'flex';
 }

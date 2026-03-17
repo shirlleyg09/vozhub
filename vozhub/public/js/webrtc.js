@@ -180,24 +180,35 @@ class WebRTCManager {
       if (candidate) this.socket.emit('rtc:ice', { to: peerId, candidate });
     };
 
-    pc.ontrack = ({ streams }) => {
+    pc.ontrack = ({ streams, track }) => {
       const stream = streams[0]; if (!stream) return;
+
+      // Verifica se é vídeo (compartilhamento de tela)
+      if (track.kind === 'video') {
+        console.log(`[WebRTC] Vídeo/tela recebido de ${peerId}`);
+        // Notifica o app para exibir o vídeo
+        if (typeof window.onScreenTrack === 'function') {
+          window.onScreenTrack(peerId, stream);
+        }
+        return;
+      }
+
+      // Áudio normal de voz
       let audio = document.getElementById(`audio-${peerId}`);
       if (!audio) {
         audio = document.createElement('audio');
         audio.id = `audio-${peerId}`; audio.autoplay = true;
         document.body.appendChild(audio);
       }
-      // Volume por usuário via GainNode
       try {
-        const ctx    = this._getCtx();
-        const src    = ctx.createMediaStreamSource(stream);
-        const gain   = ctx.createGain();
+        const ctx  = this._getCtx();
+        const src  = ctx.createMediaStreamSource(stream);
+        const gain = ctx.createGain();
         gain.gain.value = this.deafOn ? 0 : (this._peerVolumes.get(peerId) ?? 1.0);
         src.connect(gain).connect(ctx.destination);
         const peer = this.peers.get(peerId);
         if (peer) { peer.gainNode = gain; peer.audioEl = audio; }
-        audio.muted = true; // output vai pelo ctx.destination
+        audio.muted = true;
         audio.srcObject = stream;
       } catch {
         audio.srcObject = stream;

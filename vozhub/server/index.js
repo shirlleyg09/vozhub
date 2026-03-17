@@ -321,6 +321,53 @@ io.on('connection', socket => {
   socket.on('music:play:at',  (d) => { if(!limited(socket.id)) getBot()?.playAt(socket, d) });
   socket.on('music:volume',   (d) => { if(!limited(socket.id)) getBot()?.volume(socket, d) });
 
+  // ── Chat de texto ────────────────────────────────────
+  const CHAT_COLORS = ['#4f8ef7','#8b6ff5','#34d399','#fbbf24','#f87171','#22d3ee','#f97316','#ec4899'];
+  socket.on('chat:msg', ({ text }) => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    if (!text?.trim() || text.length > 500) return;
+    const key   = chKey(user.srvId, user.chId);
+    const color = CHAT_COLORS[Math.abs(user.name.split('').reduce((h,c) => h + c.charCodeAt(0), 0)) % CHAT_COLORS.length];
+    io.to(roomName(user.srvId, user.chId)).emit('chat:msg', {
+      name: user.name, text: text.trim().slice(0,500),
+      ts:   Date.now(), color,
+    });
+  });
+
+  // ── Watch Party ───────────────────────────────────────
+  socket.on('watchparty:load',  ({ url })  => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('watchparty:state', { url, playing: false, time: 0, name: user.name });
+  });
+  socket.on('watchparty:play',  ({ time }) => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('watchparty:state', { url: null, playing: true,  time, name: user.name });
+  });
+  socket.on('watchparty:pause', ({ time }) => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('watchparty:state', { url: null, playing: false, time, name: user.name });
+  });
+  socket.on('watchparty:seek',  ({ time }) => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('watchparty:state', { url: null, playing: null,  time, name: user.name });
+  });
+
+  // ── Compartilhamento de tela ──────────────────────────
+  socket.on('screen:start', () => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('screen:start', { socketId: socket.id, name: user.name });
+  });
+  socket.on('screen:stop', () => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    socket.to(roomName(user.srvId, user.chId)).emit('screen:stop', { socketId: socket.id });
+  });
+
+  // ── Levantar a mão ────────────────────────────────────
+  socket.on('hand:raise', () => {
+    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
+    io.to(roomName(user.srvId, user.chId)).emit('hand:raised', { socketId: socket.id, name: user.name });
+  });
+
   // ── Moderação ─────────────────────────────────────────
   socket.on('mod:kick', ({ targetSocketId, reason }) => {
     const user = state.sockets.get(socket.id); if (!user) return;

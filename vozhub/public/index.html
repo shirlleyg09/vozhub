@@ -68,8 +68,9 @@
       <span class="tb-name" id="tb-ch">Selecione um canal</span>
       <span class="tb-sep">|</span>
       <span class="tb-desc" id="tb-desc">Entre em um canal de voz para começar</span>
-      <button class="tb-btn" onclick="openMusicPanel()">🎵 Adicionar música</button>
+      <button class="tb-btn" onclick="openMusicPanel()">🎵 Música</button>
       <button class="tb-btn" onclick="openQueue()">📋 Fila <span id="q-count-badge" class="q-badge" style="display:none">0</span></button>
+      <button class="tb-btn" id="screen-btn" onclick="toggleScreenShare()">🖥️ Compartilhar tela</button>
       <button class="tb-btn" onclick="copyInvite()">🔗 Convidar</button>
     </div>
 
@@ -267,6 +268,20 @@
     </div>
     <div class="mvc-cur" id="mic-vol-val">100%</div>
     <button class="mvc-close" onclick="document.getElementById('mic-vol-overlay').style.display='none'">Fechar</button>
+  </div>
+</div>
+
+<!-- ══ SCREEN SHARE VIEWER ══ -->
+<div class="screen-overlay" id="screen-overlay" style="display:none">
+  <div class="screen-header">
+    <span class="screen-title" id="screen-title">🖥️ Compartilhamento de tela</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="screen-badge" id="screen-badge">👁 Assistindo</span>
+      <button class="screen-close" onclick="document.getElementById('screen-overlay').style.display='none'">✕ Minimizar</button>
+    </div>
+  </div>
+  <div class="screen-body" id="screen-body">
+    <div class="screen-empty">Aguardando stream de vídeo...</div>
   </div>
 </div>
 
