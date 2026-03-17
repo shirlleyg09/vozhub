@@ -137,7 +137,7 @@
       <button class="mtab active"  data-tab="tab-radio" onclick="switchTab(this,'tab-radio')">📻 Rádios</button>
       <button class="mtab"         data-tab="tab-upload" onclick="switchTab(this,'tab-upload')">📁 MP3</button>
       <button class="mtab"         data-tab="tab-url"    onclick="switchTab(this,'tab-url')">🔗 Link</button>
-      <button class="mtab mtab-sc" data-tab="tab-sc"     onclick="switchTab(this,'tab-sc')">☁️ SoundCloud</button>
+
       <button class="mtab mtab-jm" data-tab="tab-jm"     onclick="switchTab(this,'tab-jm')">🎼 Jamendo</button>
 
     </div>
@@ -182,16 +182,7 @@
       </button>
     </div>
 
-    <!-- Tab: SoundCloud -->
-    <div class="tab-content" id="tab-sc">
-      <p class="tab-desc">☁️ Busque músicas no SoundCloud — requer <code>npm install soundcloud-scraper</code>.</p>
-      <div class="source-status" id="sc-status"></div>
-      <div class="mo-search-row">
-        <input class="mo-in" id="sc-in" placeholder="Artista, música ou mix..." autocomplete="off">
-        <button class="mo-search-btn" onclick="doSCSearch()">Buscar</button>
-      </div>
-      <div id="sc-results" class="search-results" style="margin-top:14px"></div>
-    </div>
+
 
 
   </div>

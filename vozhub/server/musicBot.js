@@ -28,15 +28,11 @@ function saveQueues(data) {
 }
 
 // Dependências opcionais
-let ytSearch, SC;
-try { ytSearch = require('yt-search');         } catch { ytSearch = null; }
-try { SC      = require('soundcloud-scraper'); } catch { SC       = null; }
-const ytdl = null; // ytdl removido — YouTube bloqueia IPs de data center (429)
-
-function getSC() {
-  if (!SC) return null;
-  try { return new SC.Client(); } catch { return null; }
-}
+let ytSearch;
+try { ytSearch = require('yt-search'); } catch { ytSearch = null; }
+const ytdl = null;
+const SC   = null;
+function getSC() { return null; } // SoundCloud bloqueou servidores (401)
 
 // Rádios fixas — verificadas e funcionais
 const RADIOS_FIXAS = [
@@ -242,20 +238,37 @@ class MusicBot {
     socket.emit('music:searching', { source: 'soundcloud', query });
     const fetch = require('node-fetch');
 
-    // Lista de client_ids do SoundCloud para tentar em sequência
-    const SC_CLIENT_IDS = [
+    // Abordagem 1: extrai client_id dinâmico da página do SoundCloud
+    async function getDynamicClientId() {
+      try {
+        const html  = await fetch('https://soundcloud.com', { timeout: 6000 }).then(r => r.text());
+        const urls  = [...html.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(m => m[1]);
+        for (const jsUrl of urls.slice(-3)) {
+          const js = await fetch(jsUrl, { timeout: 5000 }).then(r => r.text());
+          const m  = js.match(/client_id:"([a-zA-Z0-9]{32})"/);
+          if (m) return m[1];
+        }
+      } catch {}
+      return null;
+    }
+
+    // Tenta obter client_id dinâmico
+    let clientId = await getDynamicClientId();
+    console.log('[SC] client_id dinâmico:', clientId ? clientId.slice(0,8)+'...' : 'não encontrado');
+
+    // Fallback para IDs conhecidos
+    const fallbackIds = [
       'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX',
       'a3e059563d7fd3372b49b37f00a00bcf',
-      '2t9loNQH90kzJcsFCODdigxfp325aq4z',
     ];
+    const idsToTry = clientId ? [clientId, ...fallbackIds] : fallbackIds;
 
-    for (const clientId of SC_CLIENT_IDS) {
+    for (const id of idsToTry) {
       try {
-        const url  = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${clientId}`;
-        const data = await fetch(url, { timeout: 8000 }).then(r => {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        });
+        const url  = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${id}`;
+        const resp = await fetch(url, { timeout: 8000 });
+        if (!resp.ok) { console.warn('[SC] HTTP', resp.status, 'para', id.slice(0,8)); continue; }
+        const data = await resp.json();
         const results = (data.collection || []).slice(0, 8).map(t => ({
           title:       t.title,
           artist:      t.user?.username || 'SoundCloud',
@@ -264,34 +277,37 @@ class MusicBot {
           thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
           duration:    Math.floor((t.duration||0)/1000),
           durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
-          type:'soundcloud', emoji:'☁️',
-          clientId,
+          type: 'soundcloud', emoji: '☁️',
+          clientId: id,
         }));
         if (results.length) {
-          console.log(`[SC] Busca OK com clientId ${clientId.slice(0,8)}...`);
+          console.log(`[SC] ✅ ${results.length} resultados com ${id.slice(0,8)}...`);
           socket.emit('music:sc:results', { results }); return;
         }
-      } catch(e) { console.warn(`[SC] clientId ${clientId.slice(0,8)} falhou:`, e.message); }
+      } catch(e) { console.warn('[SC] erro:', e.message?.slice(0,60)); }
     }
 
-    // Último fallback: soundcloud-scraper
-    const client = getSC();
-    if (client) {
+    // Último recurso: soundcloud-scraper
+    const scClient = getSC();
+    if (scClient) {
       try {
-        const res     = await client.search(query, 'track');
+        const res = await scClient.search(query, 'track');
         const results = (res.collection || []).slice(0, 8).map(t => ({
           title: t.title, artist: t.user?.username || 'SoundCloud',
           url: t.permalink_url || t.url,
           thumbnail: t.artwork_url?.replace('-large','-t300x300') || null,
           duration: Math.floor((t.duration||0)/1000),
           durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
-          type:'soundcloud', emoji:'☁️',
+          type: 'soundcloud', emoji: '☁️',
         }));
         if (results.length) { socket.emit('music:sc:results', { results }); return; }
-      } catch(e) { console.warn('[SC] scraper falhou:', e.message); }
+      } catch(e) { console.warn('[SC] scraper:', e.message?.slice(0,60)); }
     }
 
-    socket.emit('music:sc:results', { results: [], error: 'SoundCloud temporariamente indisponível.' });
+    socket.emit('music:sc:results', {
+      results: [],
+      error: 'SoundCloud bloqueando requisições de servidor. Use Jamendo ou Link Direto.'
+    });
   }
 
   async addSoundCloud({ url, title, artist, duration, thumbnail, streamUrl: directStreamUrl, clientId, requestedBy }, socket) {
@@ -427,8 +443,12 @@ class MusicBot {
     try {
       const fetch     = require('node-fetch');
       const clientId  = process.env.JAMENDO_CLIENT_ID || '330e6981';
+      console.log(`[Jamendo] Buscando: "${query}" com clientId ${clientId}`);
       const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=10&search=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
-      const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
+      const resp = await fetch(url, { timeout: 10000 });
+      console.log(`[Jamendo] HTTP ${resp.status}`);
+      const data = await resp.json();
+      console.log(`[Jamendo] Resultados: ${data.results?.length || 0}`);
       const results = (data.results || []).map(t => ({
         title:       t.name,
         artist:      t.artist_name,
@@ -490,10 +510,45 @@ class MusicBot {
     this.broadcast();
     console.log(`[Bot:${this.channelKey}] ➕ "${track.title}" por ${requestedBy} (pos ${position})`);
   }
-  pause()  { if(!this.playing||this.paused) return; this.paused=true; if(this.startedAt) this.elapsed+=(Date.now()-this.startedAt)/1000; this._clearTimer(); this.audioStream.pause(); this.broadcast(); }
-  resume() { if(!this.playing||!this.paused) return; this.paused=false; this.startedAt=Date.now(); const t=this.queue[this.currentIdx]; if(t?.duration>0){const r=t.duration-this.elapsed; if(r>0) this._skipTimer=setTimeout(()=>this.skip(),r*1000);} this.audioStream.resume(); this.broadcast(); }
-  skip()   { this._clearTimer(); if(!this.queue.length) return; const next=this.shuffled?Math.floor(Math.random()*this.queue.length):this.currentIdx+1; if(!this.shuffled&&next>=this.queue.length){this.stop();return;} this.currentIdx=next; this._startTrack(); this._saveQueue(); this.broadcast(); }
-  stop()   { this._clearTimer(); this.playing=false; this.paused=false; this.currentIdx=-1; this.elapsed=0; this.startedAt=null; this.audioStream.stop(); this._saveQueue(); this.broadcast(); }
+  pause() {
+    if (!this.playing || this.paused) return;
+    this.paused = true;
+    if (this.startedAt) this.elapsed += (Date.now() - this.startedAt) / 1000;
+    this._clearTimer();
+    this.broadcast(); // broadcast PRIMEIRO — sem delay para o cliente
+    this.audioStream.pause(); // ffmpeg async — não bloqueia
+  }
+  resume() {
+    if (!this.playing || !this.paused) return;
+    this.paused = false; this.startedAt = Date.now();
+    const t = this.queue[this.currentIdx];
+    if (t?.duration > 0) {
+      const r = t.duration - this.elapsed;
+      if (r > 0) this._skipTimer = setTimeout(() => this.skip(), r * 1000);
+    }
+    this.broadcast(); // broadcast PRIMEIRO
+    this.audioStream.resume();
+  }
+  skip() {
+    this._clearTimer();
+    if (!this.queue.length) return;
+    const next = this.shuffled
+      ? Math.floor(Math.random() * this.queue.length)
+      : this.currentIdx + 1;
+    if (!this.shuffled && next >= this.queue.length) { this.stop(); return; }
+    this.currentIdx = next;
+    this._startTrack();
+    this._saveQueue();
+    this.broadcast(); // broadcast PRIMEIRO
+  }
+  stop() {
+    this._clearTimer();
+    this.playing = false; this.paused = false;
+    this.currentIdx = -1; this.elapsed = 0; this.startedAt = null;
+    this.broadcast(); // broadcast PRIMEIRO
+    this.audioStream.stop();
+    this._saveQueue();
+  }
   playAt(socket,{index}){ if(index<0||index>=this.queue.length) return; this._clearTimer(); this.currentIdx=index; this._startTrack(); this.broadcast(); }
   removeFromQueue(socket,{index}){ if(index<0||index>=this.queue.length) return; const r=this.queue.splice(index,1)[0]; if(index<this.currentIdx) this.currentIdx--; else if(index===this.currentIdx){if(!this.queue.length){this.stop();return;} this.currentIdx=Math.min(this.currentIdx,this.queue.length-1); this._startTrack();} this._saveQueue(); this.broadcast(); }
   shuffle()             { this.shuffled=!this.shuffled; this.broadcast(); }
@@ -501,11 +556,15 @@ class MusicBot {
   clearQueue()          { this.stop(); this.queue=[]; this._saveQueue(); this.broadcast(); }
 
   _startTrack() {
-    this.playing=true; this.paused=false; this.elapsed=0; this.startedAt=Date.now();
-    const t=this.queue[this.currentIdx]; if(!t) return;
-    if(t.duration>0) this._skipTimer=setTimeout(()=>this.skip(),t.duration*1000);
-    // Inicia streaming server-side
-    this.audioStream.startTrack(t).catch(e => console.error('[Bot] audioStream error:', e.message));
+    this.playing = true; this.paused = false; this.elapsed = 0; this.startedAt = Date.now();
+    const t = this.queue[this.currentIdx]; if (!t) return;
+    if (t.duration > 0) this._skipTimer = setTimeout(() => this.skip(), t.duration * 1000);
+    // Broadcast IMEDIATO — cliente recebe novo estado sem esperar ffmpeg
+    this.broadcast();
+    // Inicia streaming async (não bloqueia o broadcast)
+    setImmediate(() => {
+      this.audioStream.startTrack(t).catch(e => console.error('[Bot] audioStream:', e.message));
+    });
     console.log(`[Bot:${this.channelKey}] ▶ "${t.title}"`);
   }
   _clearTimer() { clearTimeout(this._skipTimer); }

@@ -489,32 +489,28 @@ function updateMusicUI() {
 
   if (m.playing && !m.paused && streamUrl && isDirectPlay) {
     if (audio.dataset.url !== streamUrl) {
-      // PARA completamente antes de trocar — evita overlap
+      // Para imediatamente o áudio anterior
       audio.pause();
-      audio.src = '';
+      audio.removeAttribute('src');
       audio.load();
-      // Aguarda um frame antes de tocar o novo
-      setTimeout(() => {
-        audio.dataset.url = streamUrl;
-        audio.preload     = t.isLive ? 'none' : 'auto';
-        audio.src         = streamUrl;
-        audio.volume      = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
-        audio.muted       = S.localMuted;
-        audio.play().catch(e => {
-          if (e.name === 'NotAllowedError') {
-            toast('🔊 Clique aqui para ativar o áudio');
-            document.addEventListener('click', () => {
-              window._botAudio?.unlock();
-              audio.play().catch(()=>{});
-            }, { once: true });
-          }
-        });
-      }, 80);
+      // Inicia novo stream
+      audio.dataset.url = streamUrl;
+      audio.preload     = t.isLive ? 'none' : 'auto';
+      audio.src         = streamUrl;
+      audio.volume      = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
+      audio.muted       = S.localMuted;
+      audio.play().catch(e => {
+        if (e.name === 'NotAllowedError') {
+          toast('🔊 Clique aqui para ativar o áudio');
+          document.addEventListener('click', () => audio.play().catch(()=>{}), { once: true });
+        }
+      });
     }
   } else if (!m.playing || m.paused) {
+    // Para imediatamente — sem delay
     audio.pause();
     if (!m.playing) {
-      audio.src = '';
+      audio.removeAttribute('src');
       audio.dataset.url = '';
       audio.load();
     }
@@ -566,10 +562,6 @@ async function loadRadios() {
 }
 
 function updateSourceBadges() {
-  const scSt = document.getElementById('sc-status');
-  scSt.className = S.sources.soundcloud ? 'source-status ok' : 'source-status warn';
-  scSt.textContent = S.sources.soundcloud ? '✅ SoundCloud disponível' : '⚠️ SoundCloud inativo no servidor';
-
   const ytSt = document.getElementById('yt-status');
   ytSt.className = 'source-status ok';
   ytSt.textContent = '✅ YouTube — busque pelo nome ou cole um link';
