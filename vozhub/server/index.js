@@ -133,6 +133,31 @@ io.on('connection', socket => {
   // ── Login ─────────────────────────────────────────────
   socket.on('join:app', ({ name }) => {
     name = (name || '').trim().slice(0, 24); if (!name) return;
+
+    // Remove sessões fantasma com o mesmo nome (reconexão)
+    for (const [sid, user] of state.sockets) {
+      if (sid !== socket.id && user.name === name) {
+        console.log(`[app] Removendo sessão fantasma de ${name} (${sid})`);
+        const ghost = io.sockets.sockets.get(sid);
+        if (user.srvId) {
+          // Remove dos canais
+          const ch = state.channels[chKey(user.srvId, user.chId)];
+          if (ch) {
+            ch.users.delete(sid);
+            ch.musicBot.removeAudioListener(sid);
+            io.to(roomName(user.srvId, user.chId)).emit('channel:users', {
+              key: chKey(user.srvId, user.chId),
+              users: [...ch.users.values()],
+              music: ch.musicBot.getState()
+            });
+          }
+        }
+        state.sockets.delete(sid);
+        RATE.delete(sid);
+        if (ghost) ghost.disconnect(true);
+      }
+    }
+
     state.sockets.set(socket.id, { socketId: socket.id, name, srvId: null, chId: null });
     socket.emit('app:ready', { socketId: socket.id,
       servers: SERVERS_CONFIG.map(s => fullServer(s.id)) });
@@ -160,6 +185,16 @@ io.on('connection', socket => {
     socket.emit('music:state', musicState);
     if (musicState.playing && musicState.track) {
       socket.emit('music:restore', { state: musicState });
+      // Re-envia audio:direct para o novo usuário se houver música tocando
+      const t = musicState.track;
+      const directTypes = ['radio','mp3','url','jamendo','audius'];
+      if (!musicState.paused && directTypes.includes(t.type) && (t.streamUrl || t.url)) {
+        socket.emit('audio:direct', {
+          url:    t.streamUrl || t.url,
+          type:   t.type,
+          isLive: t.isLive || false,
+        });
+      }
     }
     console.log(`[voice] ${user.name} → ${key}`);
   });
@@ -388,12 +423,17 @@ io.on('connection', socket => {
   });
 
   // ── Disconnect ────────────────────────────────────────
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     const user = state.sockets.get(socket.id);
-    if (user?.srvId) leaveChannel(socket, user.srvId, user.chId);
-    state.sockets.delete(socket.id);
-    RATE.delete(socket.id);
-    console.log(`[-] ${user?.name || socket.id}`);
+    console.log(`[-] ${user?.name || socket.id} (${reason})`);
+    // Aguarda 3s antes de limpar — permite reconexão limpa
+    setTimeout(() => {
+      // Só remove se ainda não reconectou (socket.id ainda no state)
+      if (!state.sockets.has(socket.id)) return;
+      if (user?.srvId) leaveChannel(socket, user.srvId, user.chId);
+      state.sockets.delete(socket.id);
+      RATE.delete(socket.id);
+    }, 3000);
   });
 });
 

@@ -344,3 +344,134 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .screen-video{max-width:100%;max-height:100%;border-radius:var(--r-md);object-fit:contain}
 .screen-empty{color:var(--t3);text-align:center;font-size:.9rem;line-height:1.8}
 .tb-btn.active{background:rgba(248,113,113,.15);border-color:var(--red);color:var(--red)}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVO MOBILE — VozHub
+══════════════════════════════════════════════════════ */
+
+/* Botão ativar som (para navegadores/empresas que bloqueiam autoplay) */
+#sound-unlock-btn {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  z-index: 400; background: linear-gradient(135deg, var(--blue), var(--violet));
+  border: none; border-radius: 24px; color: #fff; font-family: 'Outfit', sans-serif;
+  font-size: .88rem; font-weight: 700; padding: 12px 24px; cursor: pointer;
+  box-shadow: 0 8px 24px var(--glow-blue); animation: pulse-btn 2s ease infinite;
+  display: none;
+}
+@keyframes pulse-btn { 0%,100%{transform:translateX(-50%) scale(1)} 50%{transform:translateX(-50%) scale(1.04)} }
+
+/* Mobile: oculta painel lateral direito por padrão */
+@media (max-width: 768px) {
+  /* Layout principal vira coluna */
+  #app { flex-direction: column; }
+
+  /* Sidebar de servidores vira barra horizontal no topo */
+  .ss {
+    width: 100%; height: 52px; flex-direction: row; padding: 8px 12px;
+    border-right: none; border-bottom: 1px solid var(--border);
+    overflow-x: auto; overflow-y: hidden; gap: 8px;
+  }
+  .ss-logo { width: 36px; height: 36px; font-size: 15px; flex-shrink: 0; margin-bottom: 0; }
+  .ss-btn  { width: 36px; height: 36px; flex-shrink: 0; }
+  .ss-div  { width: 1.5px; height: 24px; margin: 0 2px; flex-shrink: 0; }
+  .ss-add  { width: 36px; height: 36px; flex-shrink: 0; }
+  .ss-tip  { display: none; } /* oculta tooltips no mobile */
+  .ss-btn::before { display: none; }
+
+  /* Área principal ocupa toda a tela */
+  #app > .main { flex: 1; min-height: 0; }
+
+  /* Painel de canais — oculto por padrão, abre com botão */
+  .pc {
+    position: fixed; left: 0; top: 52px; bottom: 0; z-index: 300;
+    width: 260px; transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: 4px 0 20px rgba(0,0,0,.5);
+  }
+  .pc.open { transform: translateX(0); }
+
+  /* Overlay para fechar o painel lateral */
+  .pc-overlay {
+    display: none; position: fixed; inset: 0; z-index: 299;
+    background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
+  }
+  .pc-overlay.show { display: block; }
+
+  /* Topbar compacta */
+  .topbar { padding: 0 12px; gap: 8px; height: 48px; }
+  .tb-desc { display: none; }
+  .tb-btn  { padding: 5px 10px; font-size: .78rem; }
+  .tb-name { font-size: .88rem; }
+
+  /* Botão hamburguer para abrir painel de canais */
+  .topbar::before {
+    content: '☰'; font-size: 1.2rem; color: var(--t2); cursor: pointer;
+    padding: 4px 8px; border-radius: 6px; transition: var(--tr);
+    flex-shrink: 0;
+  }
+  .topbar:hover::before { color: var(--t1); background: var(--bg-hover); }
+
+  /* Painel de usuários — oculto no mobile */
+  .pu { display: none; }
+
+  /* Stage com padding menor */
+  .stage { padding: 16px 12px; }
+  .pg    { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+  .pc-card { padding: 16px 12px; }
+  .pc-av   { width: 48px; height: 48px; font-size: 1.1rem; }
+  .stg-banner { flex-direction: column; padding: 20px; gap: 16px; text-align: center; }
+  .stg-acts   { justify-content: center; flex-wrap: wrap; }
+
+  /* Music bar — mais compacta */
+  .mbar { padding: 0 12px; gap: 10px; height: 72px; }
+  .mb-info { width: 110px; }
+  .mb-ttl  { font-size: .82rem; }
+  .mb-art  { font-size: .7rem; }
+  .mb-prg  { display: none; } /* oculta barra de progresso no mobile */
+  .mb-vol  { width: 60px; }
+  .mb-bot-badge { display: none; }
+
+  /* Modals em fullscreen no mobile */
+  .mo-box {
+    width: 100vw; max-height: 92vh; border-radius: var(--r-lg) var(--r-lg) 0 0;
+    margin-top: auto; margin-bottom: 0; align-self: flex-end;
+  }
+  .mo { align-items: flex-end; }
+  .mo.open .mo-box { transform: none; }
+
+  /* Painel usuário no rodapé */
+  .up { padding: 8px; }
+  .up-info { display: none; }
+
+  /* Screen overlay fullscreen */
+  .screen-overlay { z-index: 900; }
+
+  /* Volume popup melhor posicionado */
+  .peer-vol-popup { left: 50% !important; transform: translateX(-50%); top: auto !important; bottom: 100px !important; }
+}
+
+/* Tablet */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .ss  { width: 56px; }
+  .pc  { width: 200px; }
+  .pu  { width: 180px; }
+  .mb-info { width: 140px; }
+  .tb-desc { display: none; }
+}
+
+/* Oculta scrollbar no mobile */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { width: 0; }
+}
+
+/* Hamburguer mobile */
+.tb-hamburger {
+  display: none; background: none; border: none; color: var(--t2);
+  font-size: 1.2rem; cursor: pointer; padding: 6px 8px; border-radius: 6px;
+  transition: var(--tr); flex-shrink: 0;
+}
+.tb-hamburger:hover { background: var(--bg-hover); color: var(--t1); }
+@media (max-width: 768px) { .tb-hamburger { display: flex; align-items: center; } }
+
+/* Diagnóstico */
+.diag-item { font-size:.8rem; padding:3px 0; color:var(--t3); transition:color .2s; }

@@ -70,7 +70,7 @@
       <span class="tb-desc" id="tb-desc">Entre em um canal de voz para começar</span>
       <button class="tb-btn" onclick="openMusicPanel()">🎵 Música</button>
       <button class="tb-btn" onclick="openQueue()">📋 Fila <span id="q-count-badge" class="q-badge" style="display:none">0</span></button>
-      <button class="tb-btn" id="screen-btn" onclick="toggleScreenShare()" style="display:none">🖥️ Compartilhar tela</button>
+      <button class="tb-btn" id="screen-btn" onclick="toggleScreenShare()" disabled title="Entre em um canal para compartilhar a tela" style="opacity:.4;cursor:not-allowed">🖥️ Tela</button>
       <button class="tb-btn" onclick="copyInvite()">🔗 Convidar</button>
     </div>
 
@@ -238,20 +238,53 @@
   </div>
 </div>
 
-<!-- ══════════════ MODAL: CONFIGURAÇÕES ══════════════ -->
+<!-- ══════════════ MODAL: CONFIGURAÇÕES + DIAGNÓSTICO ══════════════ -->
 <div class="mo" id="mo-settings">
-  <div class="mo-box">
+  <div class="mo-box" style="max-width:500px">
     <div class="mo-header">
-      <div class="mo-title">⚙️ Configurações de Áudio</div>
+      <div>
+        <div class="mo-title">⚙️ Áudio & Dispositivos</div>
+        <div class="mo-sub">Configure e teste microfone e alto-falantes</div>
+      </div>
       <button class="mo-close" onclick="closeMo('mo-settings')">✕</button>
     </div>
-    <label class="mo-field-label">Microfone</label>
+
+    <!-- Diagnóstico rápido -->
+    <div id="diag-bar" style="background:var(--bg-raised);border-radius:var(--r-md);padding:12px 14px;margin-bottom:16px;font-size:.82rem">
+      <div style="font-weight:700;color:var(--t2);margin-bottom:8px">🔍 Diagnóstico</div>
+      <div id="diag-mic"   class="diag-item">⏳ Microfone: verificando...</div>
+      <div id="diag-audio" class="diag-item">⏳ Áudio: verificando...</div>
+      <div id="diag-ctx"   class="diag-item">⏳ AudioContext: verificando...</div>
+      <div id="diag-conn"  class="diag-item">⏳ Conexão: verificando...</div>
+    </div>
+
+    <!-- Seleção de dispositivos -->
+    <label class="mo-field-label">🎤 Microfone</label>
     <select class="mo-select" id="mic-select"></select>
-    <label class="mo-field-label" style="margin-top:14px">Alto-falante</label>
+
+    <!-- Medidor de volume do mic em tempo real -->
+    <div style="margin:10px 0 16px">
+      <div style="font-size:.72rem;color:var(--t3);margin-bottom:6px">Nível do microfone (fale para testar)</div>
+      <div style="height:8px;background:var(--bg-active);border-radius:4px;overflow:hidden">
+        <div id="mic-meter" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:4px;transition:width .05s"></div>
+      </div>
+      <div id="mic-meter-label" style="font-size:.72rem;color:var(--t3);margin-top:4px">0%</div>
+    </div>
+
+    <label class="mo-field-label">🔊 Alto-falante</label>
     <select class="mo-select" id="spk-select"></select>
+    <button onclick="testSpeaker()" style="margin-top:8px;padding:7px 14px;border-radius:var(--r-sm);background:var(--bg-raised);border:1px solid var(--border);color:var(--t2);font-family:'Outfit',sans-serif;font-size:.8rem;cursor:pointer;width:100%;transition:var(--tr)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg-raised)'">
+      🔔 Testar alto-falante
+    </button>
+
+    <!-- Botão de desbloqueio de som -->
+    <button onclick="unlockSound();toast('🔊 Som desbloqueado!')" style="margin-top:10px;padding:10px;border-radius:var(--r-sm);background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);color:var(--blue);font-family:'Outfit',sans-serif;font-size:.83rem;font-weight:600;cursor:pointer;width:100%">
+      🔓 Desbloquear áudio (clique se não ouvir nada)
+    </button>
+
     <div style="margin-top:20px;display:flex;gap:10px">
-      <button class="mo-cancel" onclick="closeMo('mo-settings')">Cancelar</button>
-      <button class="mo-ok" onclick="applySettings()">Salvar</button>
+      <button class="mo-cancel" onclick="stopMicMeter();closeMo('mo-settings')">Cancelar</button>
+      <button class="mo-ok" onclick="applySettings()">✅ Salvar</button>
     </div>
   </div>
 </div>
@@ -286,6 +319,12 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- Botão ativar som (empresa/autoplay bloqueado) -->
+<button id="sound-unlock-btn" onclick="unlockSound()">🔊 Clique para ativar o som</button>
+
+<!-- Overlay mobile para fechar painel lateral -->
+<div class="pc-overlay" id="pc-overlay" onclick="closeMobilePanel()"></div>
 <audio id="music-audio" style="display:none" preload="none"></audio>
 
 <script src="/socket.io/socket.io.js"></script>

@@ -58,30 +58,47 @@ class BotAudioPlayer {
       } catch(e) { console.warn('[BotAudio] chunk error:', e.message); }
     });
 
-    // Rádios, MP3, Jamendo e fallback tocam direto no cliente
+    // Rádios, MP3, Jamendo, Audius tocam direto no cliente
     this.socket.on('audio:direct', ({ url, type, isLive }) => {
-      console.log('[BotAudio] Direto:', type, url?.slice(0,60));
+      console.log('[BotAudio] audio:direct recebido:', type, url?.slice(0,80));
+      if (!url) { console.warn('[BotAudio] URL vazia!'); return; }
       const audio = document.getElementById('music-audio');
-      if (!audio) return;
-      // Para o áudio anterior imediatamente
+      if (!audio) { console.warn('[BotAudio] elemento music-audio não encontrado!'); return; }
+
+      // Para o que estava tocando
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
-      // Inicia novo
+
       audio.dataset.url = url;
       audio.preload     = isLive ? 'none' : 'auto';
+      audio.crossOrigin = null; // remove crossorigin para evitar CORS em rádios
       audio.src         = url;
       audio.volume      = Math.min(1, this._volume);
       audio.muted       = this._muted;
-      audio.play().catch(e => {
-        console.warn('[BotAudio] play bloqueado:', e.message);
-        if (e.name === 'NotAllowedError') {
-          document.addEventListener('click', () => {
-            this.unlock();
-            audio.play().catch(()=>{});
-          }, { once: true });
-        }
-      });
+
+      // Tenta tocar
+      const tryPlay = () => {
+        audio.play().then(() => {
+          console.log('[BotAudio] ✅ Tocando:', type, url?.slice(0,60));
+        }).catch(e => {
+          console.warn('[BotAudio] play falhou:', e.name, e.message);
+          if (e.name === 'NotAllowedError') {
+            // Aguarda interação do usuário
+            const unlock = () => { audio.play().catch(()=>{}); };
+            document.addEventListener('click',   unlock, { once: true });
+            document.addEventListener('keydown',  unlock, { once: true });
+            document.addEventListener('touchend', unlock, { once: true });
+          }
+        });
+      };
+
+      // Se AudioContext suspenso, tenta desbloquear antes
+      if (this._actx?.state === 'suspended') {
+        this._actx.resume().then(tryPlay).catch(tryPlay);
+      } else {
+        tryPlay();
+      }
     });
 
     // Controles

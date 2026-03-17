@@ -203,9 +203,10 @@ socket.on('music:added', ({ track, requestedBy, playingNow, position }) => {
   if (document.getElementById('mo-queue').classList.contains('open')) renderQueue();
 });
 socket.on('music:error',    ({ msg }) => toast('❌ ' + msg));
-socket.on('music:searching', ({ source }) => {
-  const id = source === 'soundcloud' ? 'sc-results' : 'yt-results';
-  document.getElementById(id).innerHTML = '<div class="search-loading">🔍 Buscando...</div>';
+socket.on('music:searching', ({ source, query }) => {
+  const map = { soundcloud:'sc-results', youtube:'yt-results', jamendo:'jm-results', audius:'au-results' };
+  const el  = document.getElementById(map[source]);
+  if (el) el.innerHTML = `<div class="search-loading">🔍 Buscando "${query||''}"...</div>`;
 });
 socket.on('music:sc:results',      ({ results, error }) => renderSearchResults('sc-results', results, error, 'sc'));
 socket.on('music:jamendo:results', ({ results, error }) => renderSearchResults('jm-results', results, error, 'jamendo'));
@@ -349,22 +350,30 @@ async function joinVoice() {
   S.connected = true;
   socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
   playSound('join');
-  // Inicializa ScreenShare e mostra botão
+  // Inicializa ScreenShare e habilita botão
   if (!_screen) _screen = new ScreenShare(socket);
   const sb = document.getElementById('screen-btn');
-  if (sb) sb.style.display = 'flex';
+  if (sb) { sb.disabled = false; sb.style.opacity = '1'; sb.style.cursor = 'pointer'; sb.title = 'Compartilhar tela'; }
+  closeMobilePanel();
   rAll(); toast('🎤 Conectado a '+ch.name);
 }
 
 function leaveVoice() {
-  S.connected = false; socket.emit('voice:leave');
+  S.connected = false;
+  socket.emit('voice:leave');
   playSound('leave');
-  // Para compartilhamento se estiver ativo
   if (_screenSharing) stopScreenShare();
-  // Esconde botão de tela
   const sb = document.getElementById('screen-btn');
-  if (sb) { sb.style.display = 'none'; sb.textContent = '🖥️ Compartilhar tela'; sb.style.color = ''; }
-  rtc?.disconnect(); S.users = []; rAll(); toast('🚪 Saiu do canal');
+  if (sb) { sb.disabled = true; sb.style.opacity = '.4'; sb.style.cursor = 'not-allowed'; sb.textContent = '🖥️ Tela'; sb.classList.remove('active'); sb.style.color = ''; }
+  rtc?.disconnect();
+  S.users = [];      // limpa imediatamente
+  S.music  = null;   // limpa estado de música
+  rAll();
+  updateMusicUI();
+  // Para o áudio local
+  const audio = document.getElementById('music-audio');
+  if (audio) { audio.pause(); audio.src = ''; audio.dataset.url = ''; }
+  toast('🚪 Saiu do canal');
 }
 
 /* ── Volume por usuário (igual Discord) ─────────────── */
@@ -515,9 +524,9 @@ function updateMusicUI() {
   if (m.playing&&!m.paused&&t.duration>0) {
     progIv = setInterval(() => { localProg=Math.min(localProg+.25, t.duration); updProg(); }, 250);
   }
-  // Tocar áudio — rádios e links tocam direto no cliente
+  // Tocar áudio — rádios, links, jamendo, audius tocam direto no cliente
   const streamUrl = t.streamUrl || t.url || '';
-  const isDirectPlay = t.type === 'radio' || t.type === 'url' || t.type === 'mp3';
+  const isDirectPlay = ['radio','url','mp3','jamendo','audius'].includes(t.type);
 
   if (m.playing && !m.paused && streamUrl && isDirectPlay) {
     if (audio.dataset.url !== streamUrl) {
@@ -842,6 +851,95 @@ function confirmClear() {
 }
 
 /* ── Settings ──────────────────────────────────────────── */
+// ── Medidor de mic em tempo real ─────────────────────
+let _micMeterInterval = null;
+function startMicMeter() {
+  stopMicMeter();
+  if (!rtc?.analyser) return;
+  const data = new Uint8Array(rtc.analyser.frequencyBinCount);
+  _micMeterInterval = setInterval(() => {
+    if (!rtc?.analyser) { stopMicMeter(); return; }
+    rtc.analyser.getByteFrequencyData(data);
+    const avg = data.reduce((a,b) => a+b, 0) / data.length;
+    const pct = Math.min(100, Math.round(avg / 128 * 100));
+    const bar = document.getElementById('mic-meter');
+    const lbl = document.getElementById('mic-meter-label');
+    if (bar) bar.style.width = pct + '%';
+    if (lbl) lbl.textContent = pct + '% ' + (pct > 30 ? '🟢' : pct > 5 ? '🟡' : '⚪');
+    if (bar) bar.style.background = pct > 60 ? 'var(--red)' : pct > 20 ? 'linear-gradient(90deg,var(--green),var(--blue))' : 'var(--bg-active)';
+  }, 50);
+}
+function stopMicMeter() {
+  if (_micMeterInterval) { clearInterval(_micMeterInterval); _micMeterInterval = null; }
+}
+
+// ── Teste de alto-falante ─────────────────────────────
+function testSpeaker() {
+  try {
+    const ctx = getACtx();
+    if (ctx.state === 'suspended') { ctx.resume().then(testSpeaker); return; }
+    // Toca beeps de teste
+    [440, 550, 660].forEach((freq, i) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0, ctx.currentTime + i * 0.2);
+      g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i * 0.2 + 0.05);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.2 + 0.2);
+      o.start(ctx.currentTime + i * 0.2);
+      o.stop(ctx.currentTime + i * 0.2 + 0.25);
+    });
+    toast('🔔 Se ouviu os beeps, o alto-falante está funcionando!');
+  } catch(e) {
+    toast('❌ Erro ao testar: ' + e.message);
+  }
+}
+
+// ── Diagnóstico completo ──────────────────────────────
+async function runDiagnostic() {
+  const set = (id, html, ok) => {
+    const el = document.getElementById(id); if (!el) return;
+    el.innerHTML = (ok === true ? '✅' : ok === false ? '❌' : '⚠️') + ' ' + html;
+    el.style.color = ok === true ? 'var(--green)' : ok === false ? 'var(--red)' : 'var(--amber)';
+  };
+
+  // Testa microfone
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    set('diag-mic', 'Microfone: acesso permitido ✓', true);
+  } catch(e) {
+    set('diag-mic', `Microfone: BLOQUEADO — ${e.message}`, false);
+  }
+
+  // Testa AudioContext
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') {
+      set('diag-ctx', 'AudioContext: suspenso — clique em "Desbloquear áudio"', null);
+    } else {
+      set('diag-ctx', 'AudioContext: ativo ✓', true);
+    }
+    ctx.close();
+  } catch(e) {
+    set('diag-ctx', 'AudioContext: não suportado', false);
+  }
+
+  // Testa elemento de áudio
+  const audio = document.getElementById('music-audio');
+  if (audio) {
+    const blocked = audio.paused && audio.src && !audio.ended;
+    set('diag-audio', blocked
+      ? 'Áudio: bloqueado (autoplay) — clique em "Desbloquear áudio"'
+      : 'Áudio: elemento ok ✓', blocked ? null : true);
+  }
+
+  // Testa conexão
+  set('diag-conn', S.connected
+    ? `Conexão: no canal ✓`
+    : 'Conexão: fora do canal', S.connected ? true : null);
+}
+
 async function openSettings() {
   const {inputs,outputs} = await WebRTCManager.getDevices();
   const ms = document.getElementById('mic-select'); ms.innerHTML = '';
@@ -851,6 +949,8 @@ async function openSettings() {
   if (!inputs.length)  ms.innerHTML='<option>Nenhum microfone</option>';
   if (!outputs.length) ss.innerHTML='<option>Padrão do sistema</option>';
   openMo('mo-settings');
+  runDiagnostic();
+  startMicMeter();
 }
 
 async function applySettings() {
@@ -869,6 +969,53 @@ function copyInvite() {
     .then(() => toast('🔗 Link copiado!'))
     .catch(() => toast('🔗 Copie o link da barra de endereços!'));
 }
+
+/* ── Ativar Som (contorna bloqueio de autoplay / TI) ── */
+function unlockSound() {
+  // Desbloqueia AudioContext
+  const ctx = getACtx();
+  if (ctx?.state === 'suspended') ctx.resume();
+  window._botAudio?.unlock();
+  // Tenta tocar o áudio atual
+  const audio = document.getElementById('music-audio');
+  if (audio?.src) audio.play().catch(()=>{});
+  // Esconde o botão
+  document.getElementById('sound-unlock-btn').style.display = 'none';
+  toast('🔊 Som ativado!');
+}
+
+// Detecta se o autoplay está bloqueado e mostra o botão
+function checkAutoplayBlocked() {
+  const audio = document.getElementById('music-audio');
+  if (!audio) return;
+  const handler = () => {
+    document.getElementById('sound-unlock-btn').style.display = 'block';
+    audio.removeEventListener('play', okHandler);
+  };
+  const okHandler = () => {
+    document.getElementById('sound-unlock-btn').style.display = 'none';
+    audio.removeEventListener('pause', handler);
+  };
+  audio.addEventListener('pause', handler, { once: true });
+  audio.addEventListener('play', okHandler, { once: true });
+}
+
+/* ── Mobile — painel lateral ─────────────────────────── */
+function toggleMobilePanel() {
+  const pc      = document.querySelector('.pc');
+  const overlay = document.getElementById('pc-overlay');
+  const isOpen  = pc?.classList.contains('open');
+  if (isOpen) { closeMobilePanel(); }
+  else { pc?.classList.add('open'); overlay?.classList.add('show'); }
+}
+
+function closeMobilePanel() {
+  document.querySelector('.pc')?.classList.remove('open');
+  document.getElementById('pc-overlay')?.classList.remove('show');
+}
+
+// Fecha painel mobile ao entrar em canal
+const _origJoinVoice = typeof joinVoice !== 'undefined' ? joinVoice : null;
 
 /* ── Compartilhamento de Tela ──────────────────────────── */
 let _screen = null; // instância de ScreenShare
