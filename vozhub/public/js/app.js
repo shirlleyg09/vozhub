@@ -291,12 +291,20 @@ function rStage() {
       <div class="pc-nm">${u.name}${isMe?' (você)':''}</div>
       <div class="pc-st ${sp?'sp':mt?'mt':''}">${sp?'🟢 Falando':mt?'🔇 Mudo':'⬜ Conectado'}</div>
       `;
-    // Clique direito no card abre controle de volume
+    // Volume por usuário: clique direito no desktop, botão 🔊 visível no hover
     if (!isMe && u.socketId) {
+      // Desktop: clique direito
       card.addEventListener('contextmenu', ev => {
         ev.preventDefault();
         openPeerVolume(u.socketId, u.name, ev);
       });
+      // Mobile/touch: botão que aparece no card
+      const volBtn = document.createElement('button');
+      volBtn.className = 'pc-user-vol-btn';
+      volBtn.textContent = '🔊';
+      volBtn.title = 'Ajustar volume';
+      volBtn.onclick = ev => { ev.stopPropagation(); openPeerVolume(u.socketId, u.name, ev); };
+      card.appendChild(volBtn);
     }
     grid.appendChild(card);
   });
@@ -338,8 +346,7 @@ function leaveVoice() {
 
 /* ── Volume por usuário (igual Discord) ─────────────── */
 function openPeerVolume(peerId, name, event) {
-  event.stopPropagation();
-  // Remove popup anterior
+  event?.stopPropagation?.();
   document.getElementById('peer-vol-popup')?.remove();
 
   const currentVol = Math.round((rtc?.getPeerVolume(peerId) ?? 1.0) * 100);
@@ -347,32 +354,39 @@ function openPeerVolume(peerId, name, event) {
   popup.id = 'peer-vol-popup';
   popup.className = 'peer-vol-popup';
   popup.innerHTML = `
-    <div class="pvp-title">🔊 Volume de ${name}</div>
+    <div class="pvp-title">🔊 Volume — ${name}</div>
     <div class="pvp-row">
       <span class="pvp-min">0%</span>
-      <input type="range" class="pvp-slider" min="0" max="200" value="${currentVol}"
-        oninput="setPeerVol('${peerId}', this.value, this.parentElement.nextElementSibling)">
+      <input type="range" class="pvp-slider" min="0" max="200" value="${currentVol}" id="pvp-range-${peerId}"
+        oninput="setPeerVol('${peerId}', this.value)">
       <span class="pvp-max">200%</span>
     </div>
-    <div class="pvp-val">${currentVol}%</div>
+    <div class="pvp-val" id="pvp-val-${peerId}">${currentVol}%</div>
     <button class="pvp-close" onclick="document.getElementById('peer-vol-popup')?.remove()">Fechar</button>`;
 
-  // Posiciona perto do clique
-  const rect = event.target.getBoundingClientRect();
-  popup.style.cssText = `position:fixed;left:${Math.min(rect.left, window.innerWidth-200)}px;top:${rect.top-160}px;z-index:600`;
+  // Posiciona: tenta perto do clique, garante que não sai da tela
+  const x = Math.min((event?.clientX || 200), window.innerWidth  - 220);
+  const y = Math.max((event?.clientY || 200) - 180, 10);
+  popup.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:600`;
   document.body.appendChild(popup);
 
-  // Fecha ao clicar fora
   setTimeout(() => {
-    document.addEventListener('click', () => document.getElementById('peer-vol-popup')?.remove(), { once: true });
-  }, 100);
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#peer-vol-popup') && !e.target.closest('.pc-user-vol-btn')) {
+        document.getElementById('peer-vol-popup')?.remove();
+      }
+    }, { once: true });
+  }, 150);
 }
 
-function setPeerVol(peerId, value, valEl) {
+function setPeerVol(peerId, value) {
   const pct = parseInt(value);
+  const valEl = document.getElementById('pvp-val-' + peerId);
   if (valEl) valEl.textContent = pct + '%';
   rtc?.setPeerVolume(peerId, pct / 100);
 }
+
+
 
 function toggleMicVol() {
   const p = document.getElementById('mic-vol-panel');
@@ -716,7 +730,12 @@ function renderSearchResults(containerId, results, error, source) {
       <button class="si-add ${srcColor}">+ Fila</button>`;
     item.querySelector('.si-add').onclick = () => {
       if (source === 'sc') {
-        socket.emit('music:add:sc', { url:r.url, title:r.title, artist:r.artist, duration:r.duration, thumbnail:r.thumbnail });
+        socket.emit('music:add:sc', {
+          url: r.url, title: r.title, artist: r.artist,
+          duration: r.duration, thumbnail: r.thumbnail,
+          streamUrl: r.streamUrl || null,
+          clientId:  r.clientId  || null,
+        });
         toast(`☁️ Adicionando: ${r.title}`);
       } else if (source === 'jamendo') {
         socket.emit('music:add:jamendo', { streamUrl:r.streamUrl, url:r.url, title:r.title, artist:r.artist, duration:r.duration, thumbnail:r.thumbnail });

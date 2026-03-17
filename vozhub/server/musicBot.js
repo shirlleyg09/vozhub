@@ -242,17 +242,48 @@ class MusicBot {
     socket.emit('music:searching', { source: 'soundcloud', query });
     const fetch = require('node-fetch');
 
-    // Tenta soundcloud-scraper primeiro
+    // Lista de client_ids do SoundCloud para tentar em sequência
+    const SC_CLIENT_IDS = [
+      'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX',
+      'a3e059563d7fd3372b49b37f00a00bcf',
+      '2t9loNQH90kzJcsFCODdigxfp325aq4z',
+    ];
+
+    for (const clientId of SC_CLIENT_IDS) {
+      try {
+        const url  = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${clientId}`;
+        const data = await fetch(url, { timeout: 8000 }).then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+        const results = (data.collection || []).slice(0, 8).map(t => ({
+          title:       t.title,
+          artist:      t.user?.username || 'SoundCloud',
+          url:         t.permalink_url,
+          streamUrl:   t.media?.transcodings?.find(x => x.format?.mime_type === 'audio/mpeg')?.url || null,
+          thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
+          duration:    Math.floor((t.duration||0)/1000),
+          durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
+          type:'soundcloud', emoji:'☁️',
+          clientId,
+        }));
+        if (results.length) {
+          console.log(`[SC] Busca OK com clientId ${clientId.slice(0,8)}...`);
+          socket.emit('music:sc:results', { results }); return;
+        }
+      } catch(e) { console.warn(`[SC] clientId ${clientId.slice(0,8)} falhou:`, e.message); }
+    }
+
+    // Último fallback: soundcloud-scraper
     const client = getSC();
     if (client) {
       try {
         const res     = await client.search(query, 'track');
         const results = (res.collection || []).slice(0, 8).map(t => ({
-          title:       t.title,
-          artist:      t.user?.username || 'SoundCloud',
-          url:         t.permalink_url || t.url,
-          thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
-          duration:    Math.floor((t.duration||0)/1000),
+          title: t.title, artist: t.user?.username || 'SoundCloud',
+          url: t.permalink_url || t.url,
+          thumbnail: t.artwork_url?.replace('-large','-t300x300') || null,
+          duration: Math.floor((t.duration||0)/1000),
           durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
           type:'soundcloud', emoji:'☁️',
         }));
@@ -260,49 +291,36 @@ class MusicBot {
       } catch(e) { console.warn('[SC] scraper falhou:', e.message); }
     }
 
-    // Fallback: API pública do SoundCloud (sem autenticação)
-    try {
-      const clientId = 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX'; // client_id público
-      const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&limit=8&client_id=${clientId}`;
-      const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
-      const results = (data.collection || []).slice(0, 8).map(t => ({
-        title:       t.title,
-        artist:      t.user?.username || 'SoundCloud',
-        url:         t.permalink_url,
-        thumbnail:   t.artwork_url?.replace('-large','-t300x300') || null,
-        duration:    Math.floor((t.duration||0)/1000),
-        durationFmt: this._fmt(Math.floor((t.duration||0)/1000)),
-        type:'soundcloud', emoji:'☁️',
-      }));
-      socket.emit('music:sc:results', { results });
-    } catch(e) {
-      socket.emit('music:sc:results', { results: [], error: 'SoundCloud indisponível no momento.' });
-    }
+    socket.emit('music:sc:results', { results: [], error: 'SoundCloud temporariamente indisponível.' });
   }
 
-  async addSoundCloud({ url, title, artist, duration, thumbnail, requestedBy }, socket) {
-    const client = getSC();
-    if (!client) { socket?.emit('music:error', { msg: 'SoundCloud indisponível.' }); return; }
-    try {
-      if (!title) {
-        try {
-          const song = await client.getSong(url);
-          title     = song.title;
-          artist    = song.author?.name || 'SoundCloud';
-          duration  = Math.floor((song.duration||0)/1000);
-          thumbnail = song.thumbnail;
-        } catch {}
-      }
-      const streamUrl = `/api/scstream?url=${encodeURIComponent(url)}`;
-      this._enqueue({ id:`sc-${Date.now()}`, type:'soundcloud',
-        title: title||'SoundCloud Track',
-        artist:(artist||'SoundCloud')+' · por '+requestedBy,
-        emoji:'☁️', url, streamUrl,
-        duration: duration||0, durationFmt: this._fmt(duration||0),
-        requestedBy, thumbnail: thumbnail||null, isLive: false }, requestedBy);
-    } catch (err) {
-      socket?.emit('music:error', { msg: 'Erro ao carregar SoundCloud: '+err.message });
+  async addSoundCloud({ url, title, artist, duration, thumbnail, streamUrl: directStreamUrl, clientId, requestedBy }, socket) {
+    const fetch = require('node-fetch');
+    let resolvedStream = null;
+
+    // Se já tem streamUrl da busca, resolve o URL final
+    if (directStreamUrl && clientId) {
+      try {
+        const data = await fetch(`${directStreamUrl}?client_id=${clientId}`, { timeout: 8000 }).then(r => r.json());
+        resolvedStream = data.url || null;
+      } catch {}
     }
+
+    // Fallback: usa proxy do servidor
+    if (!resolvedStream) {
+      resolvedStream = `/api/scstream?url=${encodeURIComponent(url)}`;
+    }
+
+    this._enqueue({
+      id: `sc-${Date.now()}`, type: 'soundcloud',
+      title: title || 'SoundCloud Track',
+      artist: (artist || 'SoundCloud') + ' · por ' + requestedBy,
+      emoji: '☁️', url,
+      streamUrl: resolvedStream,
+      duration: duration || 0,
+      durationFmt: this._fmt(duration || 0),
+      requestedBy, thumbnail: thumbnail || null, isLive: false,
+    }, requestedBy);
   }
 
   // ── YouTube ─────────────────────────────────────────────
@@ -408,7 +426,7 @@ class MusicBot {
     socket.emit('music:searching', { source: 'jamendo', query });
     try {
       const fetch     = require('node-fetch');
-      const clientId  = process.env.JAMENDO_CLIENT_ID || '709fa152';
+      const clientId  = process.env.JAMENDO_CLIENT_ID || '330e6981';
       const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&limit=10&search=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
       const data = await fetch(url, { timeout: 8000 }).then(r => r.json());
       const results = (data.results || []).map(t => ({

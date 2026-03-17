@@ -317,3 +317,15 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background
 .mtab-jm.active { background: linear-gradient(135deg, #36b37e, #00875a); box-shadow: 0 4px 12px rgba(54,179,126,.3); }
 .si-add.jm { background: #36b37e; }
 .si-add.jm:hover { background: #00875a; }
+
+/* ── Botão de volume por usuário no card ─────────────── */
+.pc-user-vol-btn {
+  position: absolute; bottom: 6px; right: 6px;
+  background: rgba(0,0,0,.5); border: none; border-radius: 6px;
+  color: var(--t2); font-size: .7rem; padding: 3px 6px;
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+  line-height: 1;
+}
+.pc-card { position: relative; }
+.pc-card:hover .pc-user-vol-btn { opacity: 1; }
+.pc-user-vol-btn:hover { background: var(--blue); color: #fff; opacity: 1 !important; }

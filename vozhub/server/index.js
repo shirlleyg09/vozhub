@@ -291,10 +291,10 @@ io.on('connection', socket => {
     await bot.searchSoundCloud(query, socket);
   });
 
-  socket.on('music:add:sc', async ({ url, title, artist, duration, thumbnail }) => {
+  socket.on('music:add:sc', async ({ url, title, artist, duration, thumbnail, streamUrl, clientId }) => {
     if (limited(socket.id)) return;
     const bot = getBot(); if (!bot) return;
-    await bot.addSoundCloud({ url, title, artist, duration, thumbnail, requestedBy: userName() }, socket);
+    await bot.addSoundCloud({ url, title, artist, duration, thumbnail, streamUrl, clientId, requestedBy: userName() }, socket);
   });
 
   // Controles — qualquer usuário do canal
