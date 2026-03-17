@@ -349,12 +349,20 @@ async function joinVoice() {
   S.connected = true;
   socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
   playSound('join');
+  // Mostra botão de compartilhar tela
+  const sb = document.getElementById('screen-btn');
+  if (sb) sb.style.display = 'flex';
   rAll(); toast('🎤 Conectado a '+ch.name);
 }
 
 function leaveVoice() {
   S.connected = false; socket.emit('voice:leave');
   playSound('leave');
+  // Para compartilhamento se estiver ativo
+  if (_screenSharing) stopScreenShare();
+  // Esconde botão de tela
+  const sb = document.getElementById('screen-btn');
+  if (sb) { sb.style.display = 'none'; sb.textContent = '🖥️ Compartilhar tela'; sb.style.color = ''; }
   rtc?.disconnect(); S.users = []; rAll(); toast('🚪 Saiu do canal');
 }
 
@@ -883,18 +891,27 @@ async function toggleScreenShare() {
     // Notifica servidor → server avisa os outros peers
     socket.emit('screen:start');
 
-    // Adiciona tracks de tela em todas as peer connections existentes
+    // Cria peer connections separadas para o stream de tela
+    // (evita interferir com as conexões de áudio)
     if (rtc?.peers) {
       for (const [peerId, peer] of rtc.peers) {
         try {
+          // Cria PC separada para o vídeo da tela
+          const screenPC = new RTCPeerConnection(rtc.iceConfig);
+          _screenPC.set(peerId, screenPC);
+
           _screenStream.getTracks().forEach(track => {
-            peer.pc.addTrack(track, _screenStream);
+            screenPC.addTrack(track, _screenStream);
           });
-          // Re-negocia para os peers receberem o novo stream
-          const offer = await peer.pc.createOffer();
-          await peer.pc.setLocalDescription(offer);
-          socket.emit('rtc:offer', { to: peerId, offer });
-        } catch(e) { console.warn('[Screen] add track error:', e.message); }
+
+          screenPC.onicecandidate = ({ candidate }) => {
+            if (candidate) socket.emit('screen:ice', { to: peerId, candidate });
+          };
+
+          const offer = await screenPC.createOffer();
+          await screenPC.setLocalDescription(offer);
+          socket.emit('screen:offer', { to: peerId, offer });
+        } catch(e) { console.warn('[Screen] error:', e.message); }
       }
     }
 
@@ -914,14 +931,45 @@ function stopScreenShare() {
     _screenStream.getTracks().forEach(t => t.stop());
     _screenStream = null;
   }
+  // Fecha PCs de tela
+  _screenPC.forEach(pc => { try { pc.close(); } catch {} });
+  _screenPC.clear();
   _screenSharing = false;
   socket.emit('screen:stop');
   const btn = document.getElementById('screen-btn');
   if (btn) { btn.textContent = '🖥️ Compartilhar tela'; btn.style.color = ''; }
-  // Remove vídeo da tela
   document.getElementById('screen-overlay').style.display = 'none';
   toast('🖥️ Compartilhamento encerrado');
 }
+
+// Signaling WebRTC para screen share separado
+socket.on('screen:offer', async ({ from, offer }) => {
+  try {
+    const pc = new RTCPeerConnection(rtc?.iceConfig || { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    _screenPC.set(from, pc);
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socket.emit('screen:ice', { to: from, candidate });
+    };
+    pc.ontrack = ({ streams }) => {
+      const stream = streams[0]; if (!stream) return;
+      onScreenTrack(from, stream);
+    };
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('screen:answer', { to: from, answer });
+  } catch(e) { console.error('[Screen] offer error:', e.message); }
+});
+
+socket.on('screen:answer', async ({ from, answer }) => {
+  const pc = _screenPC.get(from); if (!pc) return;
+  try { await pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch {}
+});
+
+socket.on('screen:ice', async ({ from, candidate }) => {
+  const pc = _screenPC.get(from); if (!pc) return;
+  try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+});
 
 // Recebe notificação que alguém começou a compartilhar
 socket.on('screen:start', ({ socketId, name }) => {

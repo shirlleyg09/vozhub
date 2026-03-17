@@ -356,11 +356,16 @@ io.on('connection', socket => {
   socket.on('screen:start', () => {
     const user = state.sockets.get(socket.id); if (!user?.srvId) return;
     socket.to(roomName(user.srvId, user.chId)).emit('screen:start', { socketId: socket.id, name: user.name });
+    console.log(`[Screen] ${user.name} iniciou compartilhamento`);
   });
   socket.on('screen:stop', () => {
     const user = state.sockets.get(socket.id); if (!user?.srvId) return;
-    socket.to(roomName(user.srvId, user.chId)).emit('screen:stop', { socketId: socket.id });
+    socket.to(roomName(user.srvId, user.chId)).emit('screen:stop', { socketId: socket.id, name: user.name });
   });
+  // Signaling WebRTC para screen share (PCs separadas)
+  socket.on('screen:offer',  ({ to, offer })     => socket.to(to).emit('screen:offer',  { from: socket.id, offer }));
+  socket.on('screen:answer', ({ to, answer })    => socket.to(to).emit('screen:answer', { from: socket.id, answer }));
+  socket.on('screen:ice',    ({ to, candidate }) => socket.to(to).emit('screen:ice',    { from: socket.id, candidate }));
 
   // ── Levantar a mão ────────────────────────────────────
   socket.on('hand:raise', () => {
