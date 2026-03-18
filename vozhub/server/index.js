@@ -195,9 +195,21 @@ io.on('connection', socket => {
     console.log(`[auth] ${user.name} (${user.temporary ? 'temp' : user.code})`);
   });
 
-  // Legacy join:app support
+  // Legacy join:app support - trata direto
   socket.on('join:app', ({ name }) => {
-    socket.emit('auth:login', { name, type: 'new' });
+    name = (name || '').trim().slice(0, 24); if (!name) return;
+    const user = DB.createUser(name, false);
+    // Remove fantasmas
+    for (const [sid, sess] of state.sockets) {
+      if (sid !== socket.id && sess.name === name) {
+        state.sockets.delete(sid); RATE.delete(sid);
+        io.sockets.sockets.get(sid)?.disconnect(true);
+      }
+    }
+    state.sockets.set(socket.id, { socketId: socket.id, name: user.name, code: user.code, temporary: false, srvId: null, chId: null });
+    socket.emit('auth:ok', { user });
+    socket.emit('app:ready', { socketId: socket.id, servers: SERVERS_CONFIG.map(s => fullServer(s.id)) });
+    console.log(`[join:app legacy] ${user.name}`);
   });
 
   // ── Voice Join ────────────────────────────────────────

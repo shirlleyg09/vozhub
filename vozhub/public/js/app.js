@@ -98,10 +98,14 @@ let _appReady = false;
 
 socket.on('connect', () => {
   console.log('[Socket] conectado:', socket.id);
-  const saved = getSaved();
-  // Se já estava logado, re-envia join:app automaticamente (reconexão)
+
+  // Reconexão — já estava logado
   if (_appReady && S.me) {
-    socket.emit('auth:login', { name: S.me.name, code: S.me.code || '', type: S.me.temporary ? 'temp' : (S.me.code ? 'returning' : 'new') });
+    socket.emit('auth:login', {
+      name: S.me.name,
+      code: S.me.code || '',
+      type: S.me.temporary ? 'temp' : (S.me.code ? 'returning' : 'new')
+    });
     if (S.connected) {
       const srv = S.servers[S.aSrv], ch = srv?.channels?.[S.aCh];
       if (srv && ch) socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
@@ -109,31 +113,35 @@ socket.on('connect', () => {
     toast('🔄 Reconectado!');
     return;
   }
-  // Primeira vez
-  const st = document.getElementById('conn-status');
+
+  // Primeira conexão — habilita botão
+  const st  = document.getElementById('conn-status');
+  const btn = document.getElementById('login-btn');
+  const ni  = document.getElementById('ni');
+  if (st)  { st.textContent = '✅ Conectado!'; st.className = 'conn-status ok'; }
+  if (btn) btn.disabled = false;
+
+  // Auto-fill e auto-login se tiver sessão salva
+  const saved     = getSaved();
   const savedCode = localStorage.getItem('vozhub_code') || '';
-  if (saved) {
-    document.getElementById('ni').value = saved;
+  if (saved && ni) {
+    ni.value = saved;
     if (savedCode) {
       const ci = document.getElementById('ci');
       if (ci) ci.value = savedCode;
       selectLoginType('returning');
     }
-    st.textContent = `✅ Bem-vindo de volta, ${saved}!`; st.className = 'conn-status ok';
-    document.getElementById('login-btn').disabled = false;
-    setTimeout(() => doLogin(), 350);
-  } else {
-    st.textContent = '✅ Conectado! Digite seu nome.'; st.className = 'conn-status ok';
-    document.getElementById('login-btn').disabled = false;
+    if (st) st.textContent = `✅ Bem-vindo de volta, ${saved}!`;
+    setTimeout(() => doLogin(), 400);
   }
 });
 
-socket.on('connect_error', () => {
-  if (!_appReady) {
-    const st = document.getElementById('conn-status');
-    st.textContent = '❌ Sem conexão com o servidor.'; st.className = 'conn-status err';
-    document.getElementById('login-btn').disabled = false;
-  }
+socket.on('connect_error', (err) => {
+  console.warn('[Socket] connect_error:', err?.message);
+  const st  = document.getElementById('conn-status');
+  const btn = document.getElementById('login-btn');
+  if (st)  { st.textContent = '⚠️ Servidor iniciando... aguarde'; st.className = 'conn-status'; }
+  if (btn) btn.disabled = false; // Deixa tentar mesmo assim
 });
 
 socket.on('disconnect', reason => {
@@ -149,13 +157,12 @@ let _loginType = 'new';
 
 function selectLoginType(type) {
   _loginType = type;
-  // Atualiza botões ativos
-  ['new','ret','tmp'].forEach(t => document.getElementById('opt-'+t)?.classList.remove('active'));
+  document.querySelectorAll('.lg-opt-btn').forEach(b => b.classList.remove('active'));
   const map = { new:'opt-new', returning:'opt-ret', temp:'opt-tmp' };
   document.getElementById(map[type])?.classList.add('active');
-  const codeField  = document.getElementById('lg-code-field');
-  const nameLabel  = document.getElementById('lg-name-label');
-  const note       = document.getElementById('lg-note');
+  const codeField = document.getElementById('lg-code-field');
+  const nameLabel = document.getElementById('lg-name-label');
+  const note      = document.getElementById('lg-note');
   if (type === 'returning') {
     if (codeField) codeField.style.display = 'block';
     if (nameLabel) nameLabel.textContent   = 'Seu nome';
@@ -1071,16 +1078,24 @@ document.querySelectorAll('.mo').forEach(el => el.addEventListener('click', e =>
 /* ── Mascote VOX — controle de animações ─────────────── */
 let _mascotTimer = null;
 
+// Carrega src do vídeo sob demanda (lazy) — evita baixar 19MB na abertura
+function _loadVideo(id, src) {
+  const vid = document.getElementById(id);
+  if (!vid) return null;
+  if (!vid.src || !vid.src.includes(src)) {
+    vid.src = src;
+    vid.load();
+  }
+  return vid;
+}
+
 function mascotReact(state) {
   const mascot = document.getElementById('stage-mascot');
   if (!mascot) return;
-
-  // Remove todos os estados
   mascot.classList.remove('speaking', 'joining', 'leaving');
-
   if (state === 'speaking') {
     mascot.classList.add('speaking');
-    const vid = document.getElementById('mascot-video-reaction');
+    const vid = _loadVideo('mascot-video-reaction', '/img/reacao.mp4');
     if (vid && vid.paused) vid.play().catch(() => {});
   } else {
     const vid = document.getElementById('mascot-video-reaction');
@@ -1093,14 +1108,11 @@ function mascotJoin() {
   if (!mascot) return;
   mascot.classList.remove('speaking', 'leaving');
   mascot.classList.add('joining');
-  const vid = document.getElementById('mascot-video-join');
+  const vid = _loadVideo('mascot-video-join', '/img/oi.mp4');
   if (vid) {
     vid.currentTime = 0;
     vid.play().catch(() => {});
-    vid.onended = () => {
-      mascot.classList.remove('joining');
-      vid.onended = null;
-    };
+    vid.onended = () => { mascot.classList.remove('joining'); vid.onended = null; };
   } else {
     setTimeout(() => mascot.classList.remove('joining'), 2500);
   }
@@ -1111,14 +1123,11 @@ function mascotLeave() {
   if (!mascot) return;
   mascot.classList.remove('speaking', 'joining');
   mascot.classList.add('leaving');
-  const vid = document.getElementById('mascot-video-leave');
+  const vid = _loadVideo('mascot-video-leave', '/img/tchau.mp4');
   if (vid) {
     vid.currentTime = 0;
     vid.play().catch(() => {});
-    vid.onended = () => {
-      mascot.classList.remove('leaving');
-      vid.onended = null;
-    };
+    vid.onended = () => { mascot.classList.remove('leaving'); vid.onended = null; };
   } else {
     setTimeout(() => mascot.classList.remove('leaving'), 2500);
   }
@@ -1194,7 +1203,6 @@ const _origJoinVoice = typeof joinVoice !== 'undefined' ? joinVoice : null;
 /* ── Compartilhamento de Tela ──────────────────────────── */
 let _screen = null; // instância de ScreenShare
 let _screenSharing = false;
-let _micMeterInterval = null; // medidor de mic
 
 async function toggleScreenShare() {
   if (!_screen) _screen = new ScreenShare(socket);
