@@ -110,19 +110,22 @@ function leaveChannel(socket, srvId, chId) {
   const user = ch.users.get(socket.id);
   ch.users.delete(socket.id);
   socket.leave(roomName(srvId, chId));
-  // Remove do audioStream
   ch.musicBot.removeAudioListener(socket.id);
 
-  // Se canal ficou vazio, pausa a música automaticamente
+  // Pausa música se canal ficou vazio
   if (ch.users.size === 0 && ch.musicBot.playing) {
     ch.musicBot.pause();
     console.log(`[Bot] Canal ${key} vazio — música pausada`);
   }
 
-  io.to(roomName(srvId, chId)).emit('channel:users', {
-    key, users: [...ch.users.values()], music: ch.musicBot.getState()
-  });
+  const payload = { key, users: [...ch.users.values()], music: ch.musicBot.getState() };
+  io.to(roomName(srvId, chId)).emit('channel:users', payload);
   io.to(roomName(srvId, chId)).emit('voice:peer:left', { socketId: socket.id });
+
+  // Avisa o próprio socket que saiu — lista vazia + para áudio
+  socket.emit('channel:users', { key, users: [], music: { playing: false, paused: false, queue: [] } });
+  socket.emit('audio:stop_local'); // novo evento: para áudio local imediatamente
+
   if (user) console.log(`[voice] ${user.name} saiu de ${key}`);
 }
 
@@ -200,9 +203,11 @@ io.on('connection', socket => {
   });
 
   socket.on('voice:leave', () => {
-    const user = state.sockets.get(socket.id); if (!user?.srvId) return;
-    leaveChannel(socket, user.srvId, user.chId);
-    user.srvId = null; user.chId = null;
+    const user = state.sockets.get(socket.id); if (!user) return;
+    if (user.srvId) {
+      leaveChannel(socket, user.srvId, user.chId);
+      user.srvId = null; user.chId = null;
+    }
   });
 
   // ── WebRTC ────────────────────────────────────────────
@@ -426,14 +431,9 @@ io.on('connection', socket => {
   socket.on('disconnect', (reason) => {
     const user = state.sockets.get(socket.id);
     console.log(`[-] ${user?.name || socket.id} (${reason})`);
-    // Aguarda 3s antes de limpar — permite reconexão limpa
-    setTimeout(() => {
-      // Só remove se ainda não reconectou (socket.id ainda no state)
-      if (!state.sockets.has(socket.id)) return;
-      if (user?.srvId) leaveChannel(socket, user.srvId, user.chId);
-      state.sockets.delete(socket.id);
-      RATE.delete(socket.id);
-    }, 3000);
+    if (user?.srvId) leaveChannel(socket, user.srvId, user.chId);
+    state.sockets.delete(socket.id);
+    RATE.delete(socket.id);
   });
 });
 
@@ -466,6 +466,47 @@ app.post('/api/admin/cookies', express.text({ limit: '2mb' }), (req, res) => {
     res.json({ ok: true, cookies: lines });
   } catch(e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Proxy de rádio — contorna firewall corporativo e CORS
+// O servidor Render busca o stream e repassa para o cliente
+app.get('/api/radioproxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).end();
+  const decoded = decodeURIComponent(url);
+  console.log('[RadioProxy] Proxying:', decoded.slice(0, 80));
+  try {
+    const fetch = require('node-fetch');
+    const upstream = await fetch(decoded, {
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (compatible; VozHub/1.0)',
+        'Icy-MetaData':    '0',
+        'Accept':          'audio/mpeg, audio/aac, audio/*',
+        'Connection':      'keep-alive',
+      },
+      timeout: 15000,
+    });
+    if (!upstream.ok) {
+      console.warn('[RadioProxy] upstream status:', upstream.status);
+      return res.status(upstream.status).end();
+    }
+    const ct = upstream.headers.get('content-type') || 'audio/mpeg';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.setHeader('X-Proxy-Source', decoded.slice(0, 80));
+    // Para streams ao vivo, não define Content-Length
+    upstream.body.pipe(res);
+    // Fecha o upstream quando o cliente desconectar
+    req.on('close', () => {
+      upstream.body.destroy();
+      console.log('[RadioProxy] cliente desconectou');
+    });
+    console.log('[RadioProxy] ✅ stream iniciado:', ct);
+  } catch(e) {
+    console.error('[RadioProxy] erro:', e.message);
+    res.status(502).end();
   }
 });
 

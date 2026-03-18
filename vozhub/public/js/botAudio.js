@@ -63,37 +63,49 @@ class BotAudioPlayer {
       console.log('[BotAudio] audio:direct recebido:', type, url?.slice(0,80));
       if (!url) { console.warn('[BotAudio] URL vazia!'); return; }
       const audio = document.getElementById('music-audio');
-      if (!audio) { console.warn('[BotAudio] elemento music-audio não encontrado!'); return; }
+      if (!audio) return;
 
       // Para o que estava tocando
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
+      audio.volume = Math.min(1, this._volume);
+      audio.muted  = this._muted;
+      audio.preload = isLive ? 'none' : 'auto';
 
-      audio.dataset.url = url;
-      audio.preload     = isLive ? 'none' : 'auto';
-      audio.crossOrigin = null; // remove crossorigin para evitar CORS em rádios
-      audio.src         = url;
-      audio.volume      = Math.min(1, this._volume);
-      audio.muted       = this._muted;
+      // Para rádios: sempre usa proxy do servidor
+      // Isso garante funcionamento mesmo em redes corporativas que bloqueiam streams externos
+      const isRadioType = type === 'radio';
+      const finalUrl = isRadioType
+        ? '/api/radioproxy?url=' + encodeURIComponent(url)
+        : url;
 
-      // Tenta tocar
+      console.log('[BotAudio] URL final:', isRadioType ? '(proxy) ' : '', finalUrl.slice(0,80));
+
+      audio.src         = finalUrl;
+      audio.dataset.url = finalUrl;
+
       const tryPlay = () => {
         audio.play().then(() => {
-          console.log('[BotAudio] ✅ Tocando:', type, url?.slice(0,60));
+          console.log('[BotAudio] ✅ Tocando:', type);
         }).catch(e => {
           console.warn('[BotAudio] play falhou:', e.name, e.message);
           if (e.name === 'NotAllowedError') {
             // Aguarda interação do usuário
             const unlock = () => { audio.play().catch(()=>{}); };
-            document.addEventListener('click',   unlock, { once: true });
+            document.addEventListener('click',    unlock, { once: true });
             document.addEventListener('keydown',  unlock, { once: true });
             document.addEventListener('touchend', unlock, { once: true });
+          } else if (e.name === 'NotSupportedError' && !isRadioType) {
+            // Fallback: tenta via proxy mesmo para não-rádios
+            const proxyUrl = '/api/radioproxy?url=' + encodeURIComponent(url);
+            audio.src = proxyUrl;
+            audio.play().catch(() => {});
           }
         });
       };
 
-      // Se AudioContext suspenso, tenta desbloquear antes
+      // Desbloqueia AudioContext se suspenso
       if (this._actx?.state === 'suspended') {
         this._actx.resume().then(tryPlay).catch(tryPlay);
       } else {
