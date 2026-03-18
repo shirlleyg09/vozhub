@@ -2,45 +2,86 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>VozHub</title>
+<link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+<link rel="apple-touch-icon" href="/img/favicon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ══ LOGIN ══ -->
 <div id="login-screen">
-  <div class="lg-bg"></div><div class="lg-grid"></div>
-  <div class="lg-card">
+  <div class="lg-bg"></div>
+  <div class="lg-grid"></div>
+  <div class="lg-card glass">
     <div class="lg-brand">
-      <div class="lg-icon">🎙️</div>
-      <div><div class="lg-name">VozHub</div><div class="lg-tag">Voz · Música · Comunidade</div></div>
+      <div class="lg-icon">
+        <img src="/img/mascote.png" alt="VOX" style="width:36px;height:36px;object-fit:contain;border-radius:8px">
+      </div>
+      <div>
+        <img src="/img/logo.png" alt="VozHub" class="lg-logo-img">
+        <div class="lg-tag">Voz · Música · Comunidade</div>
+      </div>
     </div>
     <div class="lg-div"></div>
-    <label class="lg-label">Seu nome</label>
-    <input class="lg-input" id="ni" type="text" placeholder="Ex: Shirley" maxlength="24" autocomplete="off" autofocus>
-    <div id="conn-status" class="conn-status">⏳ Conectando ao servidor...</div>
-    <button class="lg-btn" id="login-btn" onclick="doLogin()" disabled>Entrar no VozHub →</button>
-    <p class="lg-note">Sem cadastro · Sem senha · Direto no navegador</p>
+
+    <!-- Step 1: escolha o tipo -->
+    <div id="lg-step1">
+      <div class="lg-options">
+        <button class="lg-opt-btn active" onclick="selectLoginType('new')" id="opt-new">
+          <span class="lg-opt-icon">✨</span>
+          <span class="lg-opt-title">Novo por aqui</span>
+          <span class="lg-opt-sub">Crie seu perfil agora</span>
+        </button>
+        <button class="lg-opt-btn" onclick="selectLoginType('returning')" id="opt-ret">
+          <span class="lg-opt-icon">🔑</span>
+          <span class="lg-opt-title">Já tenho login</span>
+          <span class="lg-opt-sub">Nome + código de acesso</span>
+        </button>
+        <button class="lg-opt-btn" onclick="selectLoginType('temp')" id="opt-tmp">
+          <span class="lg-opt-icon">⏳</span>
+          <span class="lg-opt-title">Acesso temporário</span>
+          <span class="lg-opt-sub">Apaga tudo ao sair</span>
+        </button>
+      </div>
+
+      <!-- Campos dinâmicos -->
+      <div id="lg-fields" style="margin-top:16px">
+        <label class="lg-label" id="lg-name-label">Seu nome</label>
+        <input class="lg-input" id="ni" type="text" placeholder="Ex: Shirley" maxlength="24" autocomplete="off" autofocus>
+        <div id="lg-code-field" style="display:none;margin-top:12px">
+          <label class="lg-label">Código de acesso</label>
+          <input class="lg-input" id="ci" type="text" placeholder="Ex: ABCD1234" maxlength="8" autocomplete="off" style="font-family:'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase">
+        </div>
+      </div>
+
+      <div id="conn-status" class="conn-status">⏳ Conectando ao servidor...</div>
+      <button class="lg-btn" id="login-btn" onclick="doLogin()" disabled>Entrar no VozHub →</button>
+      <p class="lg-note" id="lg-note">Crie seu perfil e guarde seu código de acesso para voltar depois</p>
+    </div>
   </div>
 </div>
 
-<!-- APP -->
+<!-- ══ APP ══ -->
 <div id="app" style="display:none">
 
-  <!-- Servidores -->
+  <!-- Sidebar esquerda -->
   <div class="ss" id="ss">
-    <div class="ss-logo" title="VozHub">🎙️</div>
+    <!-- Logo VOX -->
+    <div class="ss-logo" title="VozHub">
+      <img src="/img/mascote.png" alt="VOX" style="width:32px;height:32px;object-fit:contain;border-radius:8px">
+    </div>
     <div class="ss-div"></div>
     <div id="ss-items"></div>
     <div class="ss-div" style="margin-top:auto"></div>
-    <button class="ss-btn" title="Volume do microfone" onclick="toggleMicVolSidebar()" style="font-size:.9rem">🎚️</button>
-    <button class="ss-btn" title="Sair (logout)" onclick="logout()" style="font-size:.9rem;color:var(--red)">🚪</button>
-    <button class="ss-add" title="Criar servidor" onclick="toast('Criar servidor — em breve!')">+</button>
+    <button class="ss-btn" title="Criar servidor" onclick="openCreateServer()">➕</button>
+    <button class="ss-btn" title="Configurações" onclick="openSettings()">⚙️</button>
+    <button class="ss-btn" title="Sair" onclick="logout()" style="color:var(--red)">🚪</button>
   </div>
 
-  <!-- Canais -->
+  <!-- Painel de canais -->
   <div class="pc">
     <div class="pc-head">
       <span class="pc-hname"><span id="ph-icon">⚡</span> <span id="ph-name">Geral</span></span>
@@ -51,7 +92,7 @@
       <div class="up-av" id="up-av">?<div class="up-dot"></div></div>
       <div class="up-info">
         <div class="up-name" id="up-name">—</div>
-        <div class="up-tag" id="up-tag">#0000</div>
+        <div class="up-tag" id="up-tag">#????</div>
       </div>
       <div class="up-ctrls">
         <button class="up-btn" id="mic-btn" title="Microfone (M)" onclick="toggleMic()">🎤</button>
@@ -64,247 +105,255 @@
   <!-- Conteúdo principal -->
   <div class="main">
     <div class="topbar">
+      <button class="tb-hamburger" onclick="toggleMobilePanel()">☰</button>
       <span class="tb-icon">🔊</span>
       <span class="tb-name" id="tb-ch">Selecione um canal</span>
       <span class="tb-sep">|</span>
       <span class="tb-desc" id="tb-desc">Entre em um canal de voz para começar</span>
-      <button class="tb-btn" onclick="openMusicPanel()">🎵 Música</button>
-      <button class="tb-btn" onclick="openQueue()">📋 Fila <span id="q-count-badge" class="q-badge" style="display:none">0</span></button>
-      <button class="tb-btn" id="screen-btn" onclick="toggleScreenShare()" disabled title="Entre em um canal para compartilhar a tela" style="opacity:.4;cursor:not-allowed">🖥️ Tela</button>
-      <button class="tb-btn" onclick="copyInvite()">🔗 Convidar</button>
+      <div class="tb-actions">
+        <button class="tb-act-btn" onclick="openMusicPanel()" title="Adicionar música">🎵 <span>Música</span></button>
+        <button class="tb-act-btn" onclick="openQueue()" title="Ver fila">📋 <span>Fila</span> <span id="q-count-badge" class="q-badge" style="display:none">0</span></button>
+        <button class="tb-act-btn" id="screen-btn" onclick="toggleScreenShare()" disabled title="Entre em um canal para compartilhar" style="opacity:.4;cursor:not-allowed">🖥️ <span>Tela</span></button>
+        <button class="tb-act-btn" onclick="copyInvite()" title="Copiar link de convite">🔗 <span>Convidar</span></button>
+      </div>
     </div>
 
     <div class="stage" id="stage">
-      <div class="stage-empty">
-        <div class="se-icon">🎙️</div>
-        <div class="se-title">Bem-vindo ao VozHub</div>
-        <div class="se-sub">Selecione um canal de voz na barra lateral para começar</div>
+      <!-- Mascote de fundo (marca d'água dinâmica) -->
+      <div class="stage-mascot" id="stage-mascot">
+        <!-- Imagem padrão (idle) -->
+        <img src="/img/mascote.png" class="mascot-img" id="mascot-img" alt="VOX">
+        <!-- Vídeo de reação ao áudio (falando) -->
+        <video class="mascot-video" id="mascot-video-reaction" src="/img/reacao.mp4"
+          loop muted playsinline preload="auto"></video>
+        <!-- Vídeo de entrada -->
+        <video class="mascot-video" id="mascot-video-join" src="/img/oi.mp4"
+          muted playsinline preload="auto"></video>
+        <!-- Vídeo de saída -->
+        <video class="mascot-video" id="mascot-video-leave" src="/img/tchau.mp4"
+          muted playsinline preload="auto"></video>
       </div>
+
+      <div class="stage-empty" id="stage-empty">
+        <div class="se-title">Bem-vindo ao VozHub</div>
+        <div class="se-sub">Selecione um canal de voz para começar</div>
+      </div>
+      <div class="evt-log" id="evt-log"></div>
     </div>
 
     <!-- Barra de música -->
     <div class="mbar">
-      <!-- Thumb + info -->
-      <div class="mb-th" id="mb-th">🎵</div>
-      <div class="mb-info">
-        <div class="mb-ttl" id="mb-ttl">Nenhuma faixa tocando</div>
-        <div class="mb-art" id="mb-art">🤖 Bot colaborativo · aguardando</div>
+      <div class="mb-row1">
+        <div class="mb-th" id="mb-th">🎵</div>
+        <div class="mb-info">
+          <div class="mb-ttl" id="mb-ttl">Nenhuma faixa tocando</div>
+          <div class="mb-art" id="mb-art">🤖 Bot colaborativo · aguardando</div>
+        </div>
+        <div class="mb-right mb-right-desktop">
+          <span class="mb-vic" id="vol-ic" onclick="toggleMuteLocal()">🔈</span>
+          <input class="mb-vol" type="range" min="0" max="100" value="80" id="vol-sl" oninput="setLocalVol(this.value)">
+          <button class="mb-qbtn" onclick="openQueue()" title="Ver fila">📋</button>
+          <div class="mb-bot-badge">🤖 Bot</div>
+        </div>
       </div>
-
-      <!-- Controles centrais -->
-      <div class="mb-ctr">
+      <div class="mb-row2">
         <div class="mb-btns">
           <button class="mb-btn" id="shuf-btn" title="Aleatório" onclick="sendMusicEv('music:shuffle')">🔀</button>
-          <button class="mb-btn" title="Anterior (volta ao início)" onclick="sendMusicEv('music:skip')">⏮</button>
+          <button class="mb-btn" title="Anterior" onclick="sendMusicEv('music:prev')">⏮</button>
           <button class="mb-btn mb-play" id="play-btn" onclick="togglePlay()">▶</button>
           <button class="mb-btn" title="Próxima" onclick="sendMusicEv('music:skip')">⏭</button>
           <button class="mb-btn" title="Parar" onclick="sendMusicEv('music:stop')">⏹</button>
         </div>
-        <div class="mb-prg">
-          <span class="mb-time" id="mb-cur">0:00</span>
-          <div class="mb-bar" id="mb-bar"><div class="mb-fill" id="mb-fill"></div></div>
-          <span class="mb-time" id="mb-dur">0:00</span>
-        </div>
       </div>
-
-      <!-- Volume + queue -->
-      <div class="mb-right">
-        <span class="mb-vic" id="vol-ic" onclick="toggleMuteLocal()">🔈</span>
-        <input class="mb-vol" type="range" min="0" max="100" value="80" id="vol-sl"
-          oninput="setLocalVol(this.value)">
-        <button class="mb-qbtn" onclick="openQueue()">📋</button>
-        <div class="mb-bot-badge">🤖 Bot</div>
+      <div class="mb-row3">
+        <span class="mb-time" id="mb-cur">0:00</span>
+        <div class="mb-bar" id="mb-bar"><div class="mb-fill" id="mb-fill"></div></div>
+        <span class="mb-time" id="mb-dur">0:00</span>
+        <div class="mb-right mb-right-mobile" style="display:none">
+          <span class="mb-vic" onclick="toggleMuteLocal()">🔈</span>
+          <input class="mb-vol" type="range" min="0" max="100" value="80" id="vol-sl-m" oninput="setLocalVol(this.value)">
+          <button class="mb-qbtn" onclick="openQueue()">📋</button>
+        </div>
       </div>
     </div>
   </div>
-
-  <!-- Painel de usuários -->
-  <div class="pu" id="pu"></div>
 </div>
 
-<!-- ══════════════ MODAL: ADICIONAR MÚSICA ══════════════ -->
+<!-- ══ MODAL: MÚSICA ══ -->
 <div class="mo" id="mo-music">
-  <div class="mo-box mo-wide">
+  <div class="mo-box glass">
     <div class="mo-header">
-      <div>
-        <div class="mo-title">🎵 Adicionar Música</div>
-        <div class="mo-sub" id="music-panel-sub">Qualquer usuário do canal pode adicionar à fila</div>
-      </div>
+      <div><div class="mo-title">🎵 Adicionar Música</div><div class="mo-sub">Qualquer usuário do canal pode adicionar à fila</div></div>
       <button class="mo-close" onclick="closeMo('mo-music')">✕</button>
     </div>
-
-    <!-- Abas das fontes -->
-    <div class="music-tabs" id="music-tabs">
-      <button class="mtab active"  data-tab="tab-radio" onclick="switchTab(this,'tab-radio')">📻 Rádios</button>
-      <button class="mtab"         data-tab="tab-upload" onclick="switchTab(this,'tab-upload')">📁 MP3</button>
-      <button class="mtab"         data-tab="tab-url"    onclick="switchTab(this,'tab-url')">🔗 Link</button>
-
-      <button class="mtab mtab-jm" data-tab="tab-jm"     onclick="switchTab(this,'tab-jm')">🎼 Jamendo</button>
-      <button class="mtab mtab-au" data-tab="tab-au"     onclick="switchTab(this,'tab-au')">🎵 Audius</button>
-
+    <div class="music-tabs">
+      <button class="mtab active" data-tab="tab-radio" onclick="switchTab(this,'tab-radio')">📻 Rádios</button>
+      <button class="mtab" data-tab="tab-upload" onclick="switchTab(this,'tab-upload')">📁 MP3</button>
+      <button class="mtab" data-tab="tab-url" onclick="switchTab(this,'tab-url')">🔗 Link</button>
+      <button class="mtab mtab-jm" data-tab="tab-jm" onclick="switchTab(this,'tab-jm')">🎼 Jamendo</button>
+      <button class="mtab mtab-au" data-tab="tab-au" onclick="switchTab(this,'tab-au')">🎵 Audius</button>
     </div>
-
-    <!-- Tab: Rádios -->
     <div class="tab-content active" id="tab-radio">
-      <p class="tab-desc">📻 Rádios online ao vivo — sempre disponíveis, sem instalar nada extra.</p>
-      <div class="radio-filter">
-        <input class="mo-in" id="radio-filter" placeholder="Filtrar rádios..." oninput="filterRadios(this.value)">
-      </div>
-      <div class="radio-grid" id="radio-grid"></div>
+      <input class="mo-in" id="radio-filter" placeholder="Filtrar rádios..." style="margin-bottom:12px" autocomplete="off">
+      <div id="radio-grid" class="radio-grid"></div>
     </div>
-
-    <!-- Tab: Upload MP3 -->
     <div class="tab-content" id="tab-upload">
-      <p class="tab-desc">📁 Envie um arquivo de áudio do seu computador — toca para todos no canal.</p>
-      <div class="upload-zone" id="upload-zone"
-        onclick="document.getElementById('file-in').click()"
-        ondragover="event.preventDefault();this.classList.add('drag')"
-        ondragleave="this.classList.remove('drag')"
-        ondrop="handleDrop(event)">
-        <div class="uz-icon">📁</div>
-        <div class="uz-title">Arraste um arquivo ou clique para selecionar</div>
-        <div class="uz-sub">MP3, OGG, AAC, WAV, FLAC · máximo 30MB por arquivo</div>
-        <input type="file" id="file-in" accept="audio/*" style="display:none" onchange="handleFileSelect(event)">
-      </div>
-      <div id="upload-progress" style="display:none;margin-top:16px">
-        <div class="upload-bar-wrap"><div class="upload-bar-fill" id="upload-bar"></div></div>
-        <div class="upload-status" id="upload-status">Enviando...</div>
-      </div>
+      <p class="tab-desc">📁 Envie um arquivo MP3 (máx 30MB). Fica disponível para todos no canal.</p>
+      <input type="file" id="mp3-file" accept="audio/*" style="display:none" onchange="handleMp3Upload(this)">
+      <button class="mo-ok" style="width:100%" onclick="document.getElementById('mp3-file').click()">📁 Selecionar arquivo MP3</button>
+      <div id="upload-status" style="margin-top:12px;font-size:.82rem;color:var(--t3)"></div>
     </div>
-
-    <!-- Tab: Link direto -->
     <div class="tab-content" id="tab-url">
       <p class="tab-desc">🔗 Cole qualquer URL de áudio público — MP3, OGG, stream M3U8 ou URL de rádio.</p>
       <label class="mo-field-label">URL do áudio</label>
-      <input class="mo-in" id="url-in" placeholder="https://exemplo.com/musica.mp3 ou stream.m3u8" autocomplete="off">
+      <input class="mo-in" id="url-in" placeholder="https://exemplo.com/musica.mp3" autocomplete="off">
       <label class="mo-field-label" style="margin-top:12px">Título (opcional)</label>
       <input class="mo-in" id="url-title" placeholder="Nome da música ou rádio" autocomplete="off">
-      <button class="mo-ok" style="margin-top:14px;width:100%" onclick="addDirectUrl()">
-        + Adicionar à fila
-      </button>
+      <button class="mo-ok" style="margin-top:14px;width:100%" onclick="addDirectUrl()">+ Adicionar à fila</button>
     </div>
-
-    <!-- Tab: Audius -->
-    <div class="tab-content" id="tab-au">
-      <p class="tab-desc">🎵 <strong>Audius</strong> — plataforma descentralizada com hip-hop, eletrônico, indie e remixes. API gratuita, sem conta necessária.</p>
-      <div class="source-status ok" style="display:block;margin-bottom:12px">✅ Audius disponível — stream gratuito e sem bloqueios</div>
-      <div class="mo-search-row">
-        <input class="mo-in" id="au-in" placeholder="Artista, música, gênero (ex: lofi, trap, chill)..." autocomplete="off">
-        <button class="mo-search-btn" onclick="doAudiusSearch()">Buscar</button>
-      </div>
-      <div id="au-results" class="search-results" style="margin-top:14px"></div>
-    </div>
-
-    <!-- Tab: Jamendo -->
     <div class="tab-content" id="tab-jm">
       <p class="tab-desc">🎼 <strong>Jamendo</strong> — 500.000+ músicas Creative Commons. Stream gratuito e legal!</p>
-      <div class="source-status ok" style="display:block;margin-bottom:12px">✅ Jamendo disponível — sem autenticação necessária</div>
+      <div class="source-status ok" style="display:block;margin-bottom:12px">✅ Jamendo disponível</div>
       <div class="mo-search-row">
-        <input class="mo-in" id="jm-in" placeholder="Artista, música, gênero (ex: chill, jazz, rock)..." autocomplete="off">
+        <input class="mo-in" id="jm-in" placeholder="Artista, música, gênero..." autocomplete="off">
         <button class="mo-search-btn" onclick="doJamendoSearch()">Buscar</button>
       </div>
       <div id="jm-results" class="search-results" style="margin-top:14px"></div>
     </div>
-
+    <div class="tab-content" id="tab-au">
+      <p class="tab-desc">🎵 <strong>Audius</strong> — plataforma descentralizada com hip-hop, eletrônico e indie.</p>
+      <div class="source-status ok" style="display:block;margin-bottom:12px">✅ Audius disponível</div>
+      <div class="mo-search-row">
+        <input class="mo-in" id="au-in" placeholder="Artista, música, gênero..." autocomplete="off">
+        <button class="mo-search-btn" onclick="doAudiusSearch()">Buscar</button>
+      </div>
+      <div id="au-results" class="search-results" style="margin-top:14px"></div>
+    </div>
   </div>
 </div>
 
-<!-- ══════════════ MODAL: FILA ══════════════ -->
+<!-- ══ MODAL: FILA ══ -->
 <div class="mo" id="mo-queue">
-  <div class="mo-box mo-wide">
+  <div class="mo-box mo-wide glass">
     <div class="mo-header">
-      <div>
-        <div class="mo-title">📋 Fila de Reprodução</div>
-        <div class="mo-sub" id="q-sub">Carregando...</div>
-      </div>
+      <div><div class="mo-title">📋 Fila de Reprodução</div><div class="mo-sub" id="q-sub">Carregando...</div></div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="q-ctrl-btn" id="q-shuf-btn" onclick="sendMusicEv('music:shuffle')">🔀 Aleatório</button>
         <button class="q-ctrl-btn danger" onclick="confirmClear()">🗑️ Limpar</button>
         <button class="mo-close" onclick="closeMo('mo-queue')">✕</button>
       </div>
     </div>
-
-    <!-- Faixa atual em destaque -->
     <div id="q-now-playing" class="q-now-playing" style="display:none"></div>
-
-    <!-- Lista da fila -->
     <div id="q-list" class="q-list"></div>
-
-    <div class="q-footer">
-      <button class="mo-search-btn" onclick="openMusicPanel();closeMo('mo-queue')">
-        + Adicionar música
-      </button>
-    </div>
   </div>
 </div>
 
-<!-- ══════════════ MODAL: CONFIGURAÇÕES + DIAGNÓSTICO ══════════════ -->
+<!-- ══ MODAL: CONFIGURAÇÕES ══ -->
 <div class="mo" id="mo-settings">
-  <div class="mo-box" style="max-width:500px">
+  <div class="mo-box glass" style="max-width:500px">
     <div class="mo-header">
-      <div>
-        <div class="mo-title">⚙️ Áudio & Dispositivos</div>
-        <div class="mo-sub">Configure e teste microfone e alto-falantes</div>
-      </div>
-      <button class="mo-close" onclick="closeMo('mo-settings')">✕</button>
+      <div><div class="mo-title">⚙️ Configurações</div><div class="mo-sub">Áudio, dispositivos e preferências</div></div>
+      <button class="mo-close" onclick="stopMicMeter();closeMo('mo-settings')">✕</button>
     </div>
 
-    <!-- Diagnóstico rápido -->
-    <div id="diag-bar" style="background:var(--bg-raised);border-radius:var(--r-md);padding:12px 14px;margin-bottom:16px;font-size:.82rem">
-      <div style="font-weight:700;color:var(--t2);margin-bottom:8px">🔍 Diagnóstico</div>
-      <div id="diag-mic"   class="diag-item">⏳ Microfone: verificando...</div>
-      <div id="diag-audio" class="diag-item">⏳ Áudio: verificando...</div>
-      <div id="diag-ctx"   class="diag-item">⏳ AudioContext: verificando...</div>
-      <div id="diag-conn"  class="diag-item">⏳ Conexão: verificando...</div>
+    <!-- Tema -->
+    <label class="mo-field-label">🎨 Tema</label>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="theme-btn" id="theme-dark" onclick="setTheme('dark')">🌙 Dark</button>
+      <button class="theme-btn" id="theme-light" onclick="setTheme('light')">☀️ Claro</button>
     </div>
 
-    <!-- Seleção de dispositivos -->
+    <!-- Volume do microfone (movido das configurações) -->
+    <label class="mo-field-label">🎤 Volume do Microfone</label>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <input type="range" class="mo-slider" min="0" max="200" value="100" id="mic-vol-settings"
+        oninput="setMicVolume(this.value);document.getElementById('mic-vol-settings-val').textContent=this.value+'%'">
+      <span id="mic-vol-settings-val" style="font-size:.82rem;color:var(--blue);font-family:'JetBrains Mono',monospace;min-width:40px">100%</span>
+    </div>
+
+    <!-- Diagnóstico -->
+    <div id="diag-bar" style="background:var(--bg-raised);border-radius:var(--r-md);padding:12px 14px;margin-bottom:16px">
+      <div style="font-weight:700;color:var(--t2);margin-bottom:8px;font-size:.82rem">🔍 Diagnóstico</div>
+      <div id="diag-mic"   class="diag-item">⏳ Microfone...</div>
+      <div id="diag-audio" class="diag-item">⏳ Áudio...</div>
+      <div id="diag-ctx"   class="diag-item">⏳ AudioContext...</div>
+      <div id="diag-conn"  class="diag-item">⏳ Conexão...</div>
+    </div>
+
     <label class="mo-field-label">🎤 Microfone</label>
     <select class="mo-select" id="mic-select"></select>
-
-    <!-- Medidor de volume do mic em tempo real -->
-    <div style="margin:10px 0 16px">
-      <div style="font-size:.72rem;color:var(--t3);margin-bottom:6px">Nível do microfone (fale para testar)</div>
+    <div style="margin:8px 0 16px">
+      <div style="font-size:.72rem;color:var(--t3);margin-bottom:6px">Nível (fale para testar)</div>
       <div style="height:8px;background:var(--bg-active);border-radius:4px;overflow:hidden">
         <div id="mic-meter" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:4px;transition:width .05s"></div>
       </div>
-      <div id="mic-meter-label" style="font-size:.72rem;color:var(--t3);margin-top:4px">0%</div>
     </div>
 
     <label class="mo-field-label">🔊 Alto-falante</label>
     <select class="mo-select" id="spk-select"></select>
-    <button onclick="testSpeaker()" style="margin-top:8px;padding:7px 14px;border-radius:var(--r-sm);background:var(--bg-raised);border:1px solid var(--border);color:var(--t2);font-family:'Outfit',sans-serif;font-size:.8rem;cursor:pointer;width:100%;transition:var(--tr)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg-raised)'">
-      🔔 Testar alto-falante
-    </button>
+    <button onclick="testSpeaker()" class="mo-cancel" style="margin-top:8px;width:100%">🔔 Testar alto-falante</button>
+    <button onclick="unlockSound()" class="mo-cancel" style="margin-top:8px;width:100%;border-color:rgba(79,142,247,.3);color:var(--blue)">🔓 Desbloquear áudio</button>
 
-    <!-- Botão de desbloqueio de som -->
-    <button onclick="unlockSound();toast('🔊 Som desbloqueado!')" style="margin-top:10px;padding:10px;border-radius:var(--r-sm);background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);color:var(--blue);font-family:'Outfit',sans-serif;font-size:.83rem;font-weight:600;cursor:pointer;width:100%">
-      🔓 Desbloquear áudio (clique se não ouvir nada)
-    </button>
+    <!-- Código de acesso -->
+    <div id="user-code-section" style="margin-top:16px;padding:12px;background:var(--bg-raised);border-radius:var(--r-md)">
+      <div style="font-size:.72rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Seu código de acesso</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <code id="user-code-display" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--blue);letter-spacing:.15em">????????</code>
+        <button onclick="copyCode()" class="mo-cancel" style="padding:4px 10px;font-size:.75rem">📋 Copiar</button>
+      </div>
+      <div style="font-size:.72rem;color:var(--t3);margin-top:6px">Guarde este código para acessar sua conta de outro dispositivo</div>
+    </div>
 
     <div style="margin-top:20px;display:flex;gap:10px">
-      <button class="mo-cancel" onclick="stopMicMeter();closeMo('mo-settings')">Cancelar</button>
+      <button class="mo-cancel" onclick="stopMicMeter();closeMo('mo-settings')">Fechar</button>
       <button class="mo-ok" onclick="applySettings()">✅ Salvar</button>
     </div>
   </div>
 </div>
 
-<!-- Mic volume vertical (flutuante, ao lado da sidebar) -->
-<div class="mic-vol-overlay" id="mic-vol-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-  <div class="mic-vol-card">
-    <div class="mvc-title">🎤 Volume do Microfone</div>
-    <div class="mvc-track">
-      <span class="mvc-max">200%</span>
-      <input class="mvc-slider-v" type="range" min="0" max="200" value="100" id="mic-vol-sl"
-        orient="vertical" oninput="setMicVolume(this.value)">
-      <span class="mvc-min">0%</span>
+<!-- ══ MODAL: CRIAR SERVIDOR ══ -->
+<div class="mo" id="mo-create-server">
+  <div class="mo-box glass" style="max-width:420px">
+    <div class="mo-header">
+      <div><div class="mo-title">🌐 Criar Servidor</div><div class="mo-sub">Até 4 servidores por conta</div></div>
+      <button class="mo-close" onclick="closeMo('mo-create-server')">✕</button>
     </div>
-    <div class="mvc-cur" id="mic-vol-val">100%</div>
-    <button class="mvc-close" onclick="document.getElementById('mic-vol-overlay').style.display='none'">Fechar</button>
+    <label class="mo-field-label">Nome do servidor</label>
+    <input class="mo-in" id="srv-name" placeholder="Ex: Meu Servidor" maxlength="30" autocomplete="off">
+    <label class="mo-field-label" style="margin-top:12px">Ícone (emoji)</label>
+    <input class="mo-in" id="srv-icon" placeholder="Ex: 🎮" maxlength="4" style="font-size:1.2rem">
+    <label class="mo-field-label" style="margin-top:12px">Privacidade</label>
+    <select class="mo-select" id="srv-privacy" onchange="document.getElementById('srv-pass-row').style.display=this.value==='private'?'block':'none'">
+      <option value="public">🌐 Público</option>
+      <option value="private">🔒 Privado (senha)</option>
+    </select>
+    <div id="srv-pass-row" style="display:none;margin-top:12px">
+      <label class="mo-field-label">Senha de acesso</label>
+      <input class="mo-in" id="srv-password" type="password" placeholder="Senha para entrar">
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px">
+      <button class="mo-cancel" onclick="closeMo('mo-create-server')">Cancelar</button>
+      <button class="mo-ok" onclick="doCreateServer()">🚀 Criar</button>
+    </div>
   </div>
 </div>
 
-<!-- ══ SCREEN SHARE VIEWER ══ -->
+<!-- ══ MODAL: SENHA CANAL PRIVADO ══ -->
+<div class="mo" id="mo-channel-password">
+  <div class="mo-box glass" style="max-width:360px">
+    <div class="mo-header">
+      <div><div class="mo-title">🔒 Canal Privado</div><div class="mo-sub" id="cp-sub">Digite a senha para entrar</div></div>
+      <button class="mo-close" onclick="closeMo('mo-channel-password')">✕</button>
+    </div>
+    <input class="mo-in" id="channel-pass-input" type="password" placeholder="Senha do canal" autocomplete="off">
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="mo-cancel" onclick="closeMo('mo-channel-password')">Cancelar</button>
+      <button class="mo-ok" onclick="submitChannelPassword()">Entrar 🔓</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN SHARE ══ -->
 <div class="screen-overlay" id="screen-overlay" style="display:none">
   <div class="screen-header">
     <span class="screen-title" id="screen-title">🖥️ Compartilhamento de tela</span>
@@ -313,24 +362,31 @@
       <button class="screen-close" onclick="document.getElementById('screen-overlay').style.display='none'">✕ Minimizar</button>
     </div>
   </div>
-  <div class="screen-body" id="screen-body">
-    <div class="screen-empty">Aguardando stream de vídeo...</div>
+  <div class="screen-body" id="screen-body"><div class="screen-empty">Aguardando stream...</div></div>
+</div>
+
+<!-- Mic volume overlay (legacy, mantido para compat) -->
+<div class="mic-vol-overlay" id="mic-vol-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="mic-vol-card">
+    <div class="mvc-title">🎤 Volume do Microfone</div>
+    <div class="mvc-track">
+      <span class="mvc-max">200%</span>
+      <input class="mvc-slider-v" type="range" min="0" max="200" value="100" id="mic-vol-sl" style="writing-mode:vertical-lr;direction:rtl" oninput="setMicVolume(this.value)">
+      <span class="mvc-min">0%</span>
+    </div>
+    <div class="mvc-cur" id="mic-vol-val">100%</div>
+    <button class="mvc-close" onclick="document.getElementById('mic-vol-overlay').style.display='none'">Fechar</button>
   </div>
 </div>
 
+<button id="sound-unlock-btn" onclick="unlockSound()">🔊 Clique para ativar o som</button>
+<div class="pc-overlay" id="pc-overlay" onclick="closeMobilePanel()"></div>
+<audio id="music-audio" preload="none"></audio>
 <div id="toast"></div>
 
-<!-- Botão ativar som (empresa/autoplay bloqueado) -->
-<button id="sound-unlock-btn" onclick="unlockSound()">🔊 Clique para ativar o som</button>
-
-<!-- Overlay mobile para fechar painel lateral -->
-<div class="pc-overlay" id="pc-overlay" onclick="closeMobilePanel()"></div>
-<audio id="music-audio" style="display:none" preload="none"></audio>
-
-<script src="/socket.io/socket.io.js"></script>
-<script src="/js/webrtc.js"></script>
 <script src="/js/botAudio.js"></script>
 <script src="/js/screenShare.js"></script>
+<script src="/js/webrtc.js"></script>
 <script src="/js/app.js"></script>
 </body>
 </html>

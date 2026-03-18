@@ -22,6 +22,7 @@ const cors         = require('cors');
 const path         = require('path');
 const { v4: uuid } = require('uuid');
 const { MusicBot } = require('./musicBot');
+const DB = require('./db');
 
 const app    = express();
 const server = http.createServer(app);
@@ -133,38 +134,55 @@ function leaveChannel(socket, srvId, chId) {
 io.on('connection', socket => {
   console.log(`[+] ${socket.id}`);
 
-  // ── Login ─────────────────────────────────────────────
-  socket.on('join:app', ({ name }) => {
+  // ── Auth ──────────────────────────────────────────────
+  socket.on('auth:login', ({ name, code, type }) => {
     name = (name || '').trim().slice(0, 24); if (!name) return;
+    let user;
 
-    // Remove sessões fantasma com o mesmo nome (reconexão)
-    for (const [sid, user] of state.sockets) {
-      if (sid !== socket.id && user.name === name) {
-        console.log(`[app] Removendo sessão fantasma de ${name} (${sid})`);
-        const ghost = io.sockets.sockets.get(sid);
-        if (user.srvId) {
-          // Remove dos canais
-          const ch = state.channels[chKey(user.srvId, user.chId)];
+    if (type === 'returning' && code) {
+      // Login com código existente
+      user = DB.getUser(code);
+      if (!user) { socket.emit('auth:error', { msg: 'Código não encontrado. Verifique e tente novamente.' }); return; }
+      if (user.name.toLowerCase() !== name.toLowerCase()) { socket.emit('auth:error', { msg: 'Nome não corresponde ao código.' }); return; }
+      DB.updateUserSeen(user.code);
+    } else if (type === 'temp') {
+      // Conta temporária — não salva no DB
+      user = { code: 'TEMP', name, temporary: true };
+    } else {
+      // Novo usuário — cria conta
+      user = DB.createUser(name, false);
+    }
+
+    // Remove sessões fantasma
+    for (const [sid, sess] of state.sockets) {
+      if (sid !== socket.id && sess.name === name) {
+        if (sess.srvId) {
+          const ch = state.channels[chKey(sess.srvId, sess.chId)];
           if (ch) {
             ch.users.delete(sid);
             ch.musicBot.removeAudioListener(sid);
-            io.to(roomName(user.srvId, user.chId)).emit('channel:users', {
-              key: chKey(user.srvId, user.chId),
+            io.to(roomName(sess.srvId, sess.chId)).emit('channel:users', {
+              key: chKey(sess.srvId, sess.chId),
               users: [...ch.users.values()],
-              music: ch.musicBot.getState()
+              music: ch.musicBot.getState(),
+              left: name,
             });
           }
         }
-        state.sockets.delete(sid);
-        RATE.delete(sid);
-        if (ghost) ghost.disconnect(true);
+        state.sockets.delete(sid); RATE.delete(sid);
+        io.sockets.sockets.get(sid)?.disconnect(true);
       }
     }
 
-    state.sockets.set(socket.id, { socketId: socket.id, name, srvId: null, chId: null });
-    socket.emit('app:ready', { socketId: socket.id,
-      servers: SERVERS_CONFIG.map(s => fullServer(s.id)) });
-    console.log(`[app] ${name} entrou`);
+    state.sockets.set(socket.id, { socketId: socket.id, name: user.name, code: user.code, temporary: user.temporary, srvId: null, chId: null });
+    socket.emit('auth:ok', { user });
+    socket.emit('app:ready', { socketId: socket.id, servers: SERVERS_CONFIG.map(s => fullServer(s.id)) });
+    console.log(`[auth] ${user.name} (${user.temporary ? 'temp' : user.code})`);
+  });
+
+  // Legacy join:app support
+  socket.on('join:app', ({ name }) => {
+    socket.emit('auth:login', { name, type: 'new' });
   });
 
   // ── Voice Join ────────────────────────────────────────
@@ -178,7 +196,7 @@ io.on('connection', socket => {
     socket.join(roomName(srvId, chId));
     ch.users.set(socket.id, { socketId: socket.id, name: user.name, micOn: true, deafOn: false, speaking: false });
     const room = roomName(srvId, chId);
-    io.to(room).emit('channel:users', { key, users: [...ch.users.values()], music: ch.musicBot.getState() });
+    io.to(room).emit('channel:users', { key, users: [...ch.users.values()], music: ch.musicBot.getState(), joined: user.name });
     const peers = [...ch.users.keys()].filter(id => id !== socket.id);
     socket.emit('voice:peers', { peers, key });
     // Registra no audioStream para receber chunks de áudio

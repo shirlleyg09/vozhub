@@ -172,8 +172,10 @@ class WebRTCManager {
     const pc = new RTCPeerConnection(this.iceConfig);
     this.peers.set(peerId, { pc, gainNode: null, audioEl: null });
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(t => pc.addTrack(t, this.localStream));
+    // Usa o stream processado se disponível, senão usa o original
+    const streamToSend = this._processedStream || this.localStream;
+    if (streamToSend) {
+      streamToSend.getTracks().forEach(t => pc.addTrack(t, streamToSend));
     }
 
     pc.onicecandidate = ({ candidate }) => {
@@ -275,10 +277,12 @@ class WebRTCManager {
   async changeMic(deviceId) {
     if (this.vadTimer) cancelAnimationFrame(this.vadTimer);
     this.localStream?.getTracks().forEach(t => t.stop());
+    this._processedStream = null;
     await this.initMic(deviceId);
+    const streamToSend = this._processedStream || this.localStream;
     this.peers.forEach(async (peer) => {
       const sender = peer.pc?.getSenders().find(s => s.track?.kind === 'audio');
-      const newTrack = this.localStream?.getAudioTracks()[0];
+      const newTrack = streamToSend?.getAudioTracks()[0];
       if (sender && newTrack) await sender.replaceTrack(newTrack).catch(() => {});
     });
   }

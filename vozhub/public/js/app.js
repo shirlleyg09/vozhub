@@ -171,10 +171,19 @@ socket.on('app:ready', ({ socketId, servers }) => {
 });
 
 socket.on('channel:users', ({ key, users, music }) => {
-  if (key !== curKey()) return;
-  S.users = users; S.music = music;
+  // Se users vazio, é confirmação que saímos — atualiza sempre
+  if (key !== curKey() && users.length > 0) return;
+  S.users = users;
+  if (music) S.music = music;
+  // Se canal ficou vazio para nós = saímos
+  if (users.length === 0) {
+    S.connected = false;
+    const audio = document.getElementById('music-audio');
+    if (audio) { audio.pause(); audio.src = ''; audio.load(); audio.dataset.url = ''; }
+    window._botAudio?.mute(true);
+  }
   rChannelPanel(); rStage(); rUsers(); updateMusicUI();
-  const cnt = music?.queue?.length || 0;
+  const cnt = S.music?.queue?.length || 0;
   const b = document.getElementById('q-count-badge');
   b.textContent = cnt; b.style.display = cnt ? 'inline' : 'none';
 });
@@ -215,6 +224,21 @@ socket.on('music:yt:results', ({ results, error }) => renderSearchResults('yt-re
 socket.on('error',  ({ msg }) => toast('❌ ' + msg));
 socket.on('kicked', ({ reason }) => { toast('🚫 '+reason); S.connected=false; rtc?.disconnect(); S.users=[]; rAll(); });
 socket.on('voice:peers', async ({ peers }) => { if (rtc) await rtc.connectToPeers(peers); });
+
+// Servidor manda parar áudio local (ao sair do canal)
+socket.on('audio:stop_local', () => {
+  const audio = document.getElementById('music-audio');
+  if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); audio.dataset.url = ''; }
+  window._botAudio?.mute(true);
+});
+
+// Para áudio local imediatamente ao sair do canal
+socket.on('audio:stop_local', () => {
+  const audio = document.getElementById('music-audio');
+  if (audio) { audio.pause(); audio.src = ''; audio.load(); audio.dataset.url = ''; }
+  window._botAudio?.mute(true);
+  console.log('[App] audio:stop_local recebido');
+});
 
 // Restaura estado da música ao reconectar (fila preservada no servidor)
 socket.on('music:restore', ({ state }) => {
@@ -354,6 +378,11 @@ async function joinVoice() {
   if (!_screen) _screen = new ScreenShare(socket);
   const sb = document.getElementById('screen-btn');
   if (sb) { sb.disabled = false; sb.style.opacity = '1'; sb.style.cursor = 'pointer'; sb.title = 'Compartilhar tela'; }
+  // Desmuta áudio ao entrar no canal
+  window._botAudio?.mute(false);
+  S.localMuted = false;
+  const volEl = document.getElementById('vol-sl');
+  if (volEl) setLocalVol(volEl.value);
   closeMobilePanel();
   rAll(); toast('🎤 Conectado a '+ch.name);
 }
@@ -363,16 +392,20 @@ function leaveVoice() {
   socket.emit('voice:leave');
   playSound('leave');
   if (_screenSharing) stopScreenShare();
+  // Para áudio IMEDIATAMENTE
+  const audio = document.getElementById('music-audio');
+  if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); audio.dataset.url = ''; }
+  window._botAudio?.mute(true);
+  // Desabilita botão de tela
   const sb = document.getElementById('screen-btn');
   if (sb) { sb.disabled = true; sb.style.opacity = '.4'; sb.style.cursor = 'not-allowed'; sb.textContent = '🖥️ Tela'; sb.classList.remove('active'); sb.style.color = ''; }
   rtc?.disconnect();
-  S.users = [];      // limpa imediatamente
-  S.music  = null;   // limpa estado de música
+  S.users = [];
+  S.music = null;
   rAll();
   updateMusicUI();
-  // Para o áudio local
-  const audio = document.getElementById('music-audio');
-  if (audio) { audio.pause(); audio.src = ''; audio.dataset.url = ''; }
+  // Quando voltar ao canal, desmutar novamente
+  S.localMuted = false;
   toast('🚪 Saiu do canal');
 }
 
@@ -852,7 +885,7 @@ function confirmClear() {
 
 /* ── Settings ──────────────────────────────────────────── */
 // ── Medidor de mic em tempo real ─────────────────────
-let _micMeterInterval = null;
+var _micMeterInterval = null; // var garante hoisting correto
 function startMicMeter() {
   stopMicMeter();
   if (!rtc?.analyser) return;
@@ -870,7 +903,7 @@ function startMicMeter() {
   }, 50);
 }
 function stopMicMeter() {
-  if (_micMeterInterval) { clearInterval(_micMeterInterval); _micMeterInterval = null; }
+  try { if (_micMeterInterval) { clearInterval(_micMeterInterval); _micMeterInterval = null; } } catch {}
 }
 
 // ── Teste de alto-falante ─────────────────────────────
@@ -964,6 +997,62 @@ function openMo(id)  { document.getElementById(id).classList.add('open'); }
 function closeMo(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.mo').forEach(el => el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); }));
 
+/* ── Mascote VOX — controle de animações ─────────────── */
+let _mascotTimer = null;
+
+function mascotReact(state) {
+  const mascot = document.getElementById('stage-mascot');
+  if (!mascot) return;
+
+  // Remove todos os estados
+  mascot.classList.remove('speaking', 'joining', 'leaving');
+
+  if (state === 'speaking') {
+    mascot.classList.add('speaking');
+    const vid = document.getElementById('mascot-video-reaction');
+    if (vid && vid.paused) vid.play().catch(() => {});
+  } else {
+    const vid = document.getElementById('mascot-video-reaction');
+    if (vid) vid.pause();
+  }
+}
+
+function mascotJoin() {
+  const mascot = document.getElementById('stage-mascot');
+  if (!mascot) return;
+  mascot.classList.remove('speaking', 'leaving');
+  mascot.classList.add('joining');
+  const vid = document.getElementById('mascot-video-join');
+  if (vid) {
+    vid.currentTime = 0;
+    vid.play().catch(() => {});
+    vid.onended = () => {
+      mascot.classList.remove('joining');
+      vid.onended = null;
+    };
+  } else {
+    setTimeout(() => mascot.classList.remove('joining'), 2500);
+  }
+}
+
+function mascotLeave() {
+  const mascot = document.getElementById('stage-mascot');
+  if (!mascot) return;
+  mascot.classList.remove('speaking', 'joining');
+  mascot.classList.add('leaving');
+  const vid = document.getElementById('mascot-video-leave');
+  if (vid) {
+    vid.currentTime = 0;
+    vid.play().catch(() => {});
+    vid.onended = () => {
+      mascot.classList.remove('leaving');
+      vid.onended = null;
+    };
+  } else {
+    setTimeout(() => mascot.classList.remove('leaving'), 2500);
+  }
+}
+
 function copyInvite() {
   navigator.clipboard.writeText(window.location.href)
     .then(() => toast('🔗 Link copiado!'))
@@ -974,14 +1063,28 @@ function copyInvite() {
 function unlockSound() {
   // Desbloqueia AudioContext
   const ctx = getACtx();
-  if (ctx?.state === 'suspended') ctx.resume();
+  ctx?.resume().then(() => console.log('[Audio] AudioContext resumido'));
+
+  // Desbloqueia BotAudio
   window._botAudio?.unlock();
-  // Tenta tocar o áudio atual
+
+  // Força reprodução do áudio atual
   const audio = document.getElementById('music-audio');
-  if (audio?.src) audio.play().catch(()=>{});
-  // Esconde o botão
+  if (audio) {
+    if (audio.paused && audio.src && audio.src !== window.location.href) {
+      audio.play().then(() => {
+        console.log('[Audio] Desbloqueado com sucesso');
+        toast('🔊 Som ativado!');
+      }).catch(e => {
+        console.warn('[Audio] ainda bloqueado:', e.message);
+        toast('⚠️ Clique em qualquer lugar da página para ativar o som');
+      });
+    } else {
+      toast('🔊 Áudio desbloqueado!');
+    }
+  }
+
   document.getElementById('sound-unlock-btn').style.display = 'none';
-  toast('🔊 Som ativado!');
 }
 
 // Detecta se o autoplay está bloqueado e mostra o botão
@@ -1020,6 +1123,7 @@ const _origJoinVoice = typeof joinVoice !== 'undefined' ? joinVoice : null;
 /* ── Compartilhamento de Tela ──────────────────────────── */
 let _screen = null; // instância de ScreenShare
 let _screenSharing = false;
+let _micMeterInterval = null; // medidor de mic
 
 async function toggleScreenShare() {
   if (!_screen) _screen = new ScreenShare(socket);
