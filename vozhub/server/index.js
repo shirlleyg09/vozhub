@@ -1,5 +1,5 @@
 /**
- * VozHub — Servidor v2
+ * VOX — Servidor v2
  * Node.js + Express + Socket.IO + WebRTC Signaling + MusicBot v2
  */
 
@@ -498,7 +498,7 @@ app.get('/api/radioproxy', async (req, res) => {
     const fetch = require('node-fetch');
     const upstream = await fetch(decoded, {
       headers: {
-        'User-Agent':      'Mozilla/5.0 (compatible; VozHub/1.0)',
+        'User-Agent':      'Mozilla/5.0 (compatible; VOX/1.0)',
         'Icy-MetaData':    '0',
         'Accept':          'audio/mpeg, audio/aac, audio/*',
         'Connection':      'keep-alive',
@@ -576,7 +576,7 @@ function getLocalIP() {
 server.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIP();
   console.log('');
-  console.log('  🎙️  VozHub rodando!');
+  console.log('  🎙️  VOX rodando!');
   console.log('');
   console.log(`  Local:   http://localhost:${PORT}`);
   console.log(`  Rede:    http://${ip}:${PORT}`);
