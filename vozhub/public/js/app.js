@@ -101,7 +101,7 @@ socket.on('connect', () => {
   const saved = getSaved();
   // Se já estava logado, re-envia join:app automaticamente (reconexão)
   if (_appReady && S.me) {
-    socket.emit('join:app', { name: S.me.name });
+    socket.emit('auth:login', { name: S.me.name, code: S.me.code || '', type: S.me.temporary ? 'temp' : (S.me.code ? 'returning' : 'new') });
     if (S.connected) {
       const srv = S.servers[S.aSrv], ch = srv?.channels?.[S.aCh];
       if (srv && ch) socket.emit('voice:join', { srvId: srv.id, chId: ch.id });
@@ -111,8 +111,14 @@ socket.on('connect', () => {
   }
   // Primeira vez
   const st = document.getElementById('conn-status');
+  const savedCode = localStorage.getItem('vozhub_code') || '';
   if (saved) {
     document.getElementById('ni').value = saved;
+    if (savedCode) {
+      const ci = document.getElementById('ci');
+      if (ci) ci.value = savedCode;
+      selectLoginType('returning');
+    }
     st.textContent = `✅ Bem-vindo de volta, ${saved}!`; st.className = 'conn-status ok';
     document.getElementById('login-btn').disabled = false;
     setTimeout(() => doLogin(), 350);
@@ -138,26 +144,91 @@ socket.on('disconnect', reason => {
 /* ── Login ─────────────────────────────────────────────── */
 document.getElementById('ni').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-async function doLogin() {
-  const v = document.getElementById('ni').value.trim(); if (!v) return;
-  S.me = { socketId: socket.id, name: v };
-  saveSession(v);
-  socket.emit('join:app', { name: v });
+// ── Tipo de login ──────────────────────────────────────
+let _loginType = 'new';
+
+function selectLoginType(type) {
+  _loginType = type;
+  // Atualiza botões ativos
+  ['new','ret','tmp'].forEach(t => document.getElementById('opt-'+t)?.classList.remove('active'));
+  const map = { new:'opt-new', returning:'opt-ret', temp:'opt-tmp' };
+  document.getElementById(map[type])?.classList.add('active');
+  const codeField  = document.getElementById('lg-code-field');
+  const nameLabel  = document.getElementById('lg-name-label');
+  const note       = document.getElementById('lg-note');
+  if (type === 'returning') {
+    if (codeField) codeField.style.display = 'block';
+    if (nameLabel) nameLabel.textContent   = 'Seu nome';
+    if (note)      note.textContent        = 'Use o mesmo nome e código da última vez';
+  } else if (type === 'temp') {
+    if (codeField) codeField.style.display = 'none';
+    if (nameLabel) nameLabel.textContent   = 'Seu nome (temporário)';
+    if (note)      note.textContent        = '⏳ Conta temporária — apagada ao sair';
+  } else {
+    if (codeField) codeField.style.display = 'none';
+    if (nameLabel) nameLabel.textContent   = 'Seu nome';
+    if (note)      note.textContent        = 'Guarde seu código de acesso para voltar depois';
+  }
+}
+
+async function _initApp(name, code) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  document.getElementById('up-name').textContent = v;
-  document.getElementById('up-tag').textContent  = '#' + String(Math.floor(Math.random()*9000)+1000);
+  document.getElementById('up-name').textContent = name;
+  document.getElementById('up-tag').textContent  = code && code !== 'TEMP'
+    ? '#' + code.slice(-4)
+    : '#' + String(Math.floor(Math.random()*9000)+1000);
   const av = document.getElementById('up-av');
-  av.className = 'up-av ' + avc(v); av.innerHTML = ini(v) + '<div class="up-dot"></div>';
+  av.className = 'up-av ' + avc(name);
+  av.innerHTML = ini(name) + '<div class="up-dot"></div>';
   _appReady = true;
+  // Mostra código nas configurações
+  const cd = document.getElementById('user-code-display');
+  if (cd) cd.textContent = (!code || code === 'TEMP') ? '(temporário)' : code;
+  // Inicia WebRTC
   rtc = new WebRTCManager(socket);
-  rtc.onSpeaking = sp => socket.emit('audio:speaking', { speaking: sp });
+  rtc.onSpeaking = sp => {
+    socket.emit('audio:speaking', { speaking: sp });
+    mascotReact(sp ? 'speaking' : null);
+  };
   await rtc.initMic();
-
-  // Bot de áudio server-side (igual Discord)
   window._botAudio = new BotAudioPlayer(socket);
+  if (!_screen) _screen = new ScreenShare(socket);
   fetch('/api/sources').then(r => r.json()).then(src => { S.sources = src; updateSourceBadges(); }).catch(() => {});
 }
+
+async function doLogin() {
+  const name = document.getElementById('ni')?.value.trim(); if (!name) return;
+  const code = document.getElementById('ci')?.value.trim().toUpperCase() || '';
+  document.getElementById('login-btn').disabled = true;
+
+  if (_loginType === 'returning' && !code) {
+    toast('⚠️ Digite seu código de acesso'); 
+    document.getElementById('login-btn').disabled = false; 
+    return;
+  }
+
+  // Salva nome para autopreenchimento
+  saveSession(name);
+
+  // Tenta autenticar via servidor
+  socket.emit('auth:login', { name, code, type: _loginType });
+}
+
+// Resposta do servidor ao auth
+socket.on('auth:ok', async ({ user }) => {
+  S.me = { name: user.name, code: user.code, temporary: user.temporary };
+  if (!user.temporary) {
+    localStorage.setItem('vozhub_code', user.code);
+    localStorage.setItem('vozhub_name', user.name);
+  }
+  await _initApp(user.name, user.code);
+});
+
+socket.on('auth:error', ({ msg }) => {
+  toast('❌ ' + msg);
+  document.getElementById('login-btn').disabled = false;
+});
 
 function logout() {
   clearSession(); _appReady = false;

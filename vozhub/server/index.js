@@ -22,7 +22,22 @@ const cors         = require('cors');
 const path         = require('path');
 const { v4: uuid } = require('uuid');
 const { MusicBot } = require('./musicBot');
-const DB = require('./db');
+let DB;
+try {
+  DB = require('./db');
+  console.log('[DB] Módulo carregado com sucesso');
+} catch(e) {
+  console.warn('[DB] Falha ao carregar db.js:', e.message, '— usando modo sem persistência');
+  // Fallback simples sem persistência
+  const { v4: uuidDB } = require('uuid');
+  function mkCode() { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({length:8},()=>c[Math.floor(Math.random()*c.length)]).join(''); }
+  DB = {
+    createUser: (name, temp) => ({ code: temp ? 'TEMP' : mkCode(), name, temporary: !!temp }),
+    getUser: () => null,
+    updateUserSeen: () => {},
+    deleteUser: () => {},
+  };
+}
 
 const app    = express();
 const server = http.createServer(app);
