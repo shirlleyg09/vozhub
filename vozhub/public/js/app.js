@@ -154,7 +154,14 @@ socket.on('disconnect', reason => {
 });
 
 /* ── Login ─────────────────────────────────────────────── */
-document.getElementById('ni').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+// Safe addEventListener — elemento pode não existir ainda
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ni')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  document.getElementById('ci')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  // Aplica tema salvo
+  const t = localStorage.getItem('vox_theme') || 'dark';
+  setTheme(t);
+});
 
 
 function selectLoginType(type) {
