@@ -312,13 +312,7 @@ socket.on('audio:stop_local', () => {
   window._botAudio?.mute(true);
 });
 
-// Para áudio local imediatamente ao sair do canal
-socket.on('audio:stop_local', () => {
-  const audio = document.getElementById('music-audio');
-  if (audio) { audio.pause(); audio.src = ''; audio.load(); audio.dataset.url = ''; }
-  window._botAudio?.mute(true);
-  console.log('[App] audio:stop_local recebido');
-});
+
 
 // Restaura estado da música ao reconectar (fila preservada no servidor)
 socket.on('music:restore', ({ state }) => {
@@ -377,13 +371,31 @@ function rStage() {
   const srv = S.servers[S.aSrv]; if (!srv) return;
   const ch  = srv.channels[S.aCh]; if (!ch) return;
   document.getElementById('tb-ch').textContent   = ch.name;
-  document.getElementById('tb-desc').textContent = ch.desc;
+  document.getElementById('tb-desc').textContent = ch.desc || '';
   const stage = document.getElementById('stage'); stage.innerHTML = '';
+
+  // Mascote de fundo (sempre presente)
+  const mascot = document.createElement('div');
+  mascot.className = 'stage-mascot'; mascot.id = 'stage-mascot';
+  mascot.innerHTML = `
+    <picture><source srcset="/img/mascote.webp" type="image/webp">
+      <img src="/img/mascote.png" class="mascot-img" id="mascot-img" alt="VOX">
+    </picture>
+    <video class="mascot-video" id="mascot-video-reaction" loop muted playsinline preload="none"></video>
+    <video class="mascot-video" id="mascot-video-join"     muted playsinline preload="none"></video>
+    <video class="mascot-video" id="mascot-video-leave"    muted playsinline preload="none"></video>`;
+  stage.appendChild(mascot);
+
+  // Log de eventos (entrada/saída)
+  const evtLog = document.createElement('div');
+  evtLog.className = 'evt-log'; evtLog.id = 'evt-log';
+  stage.appendChild(evtLog);
+
   const members = S.connected ? S.users : (ch.users||[]);
   const ban = document.createElement('div'); ban.className = 'stg-banner';
   ban.innerHTML = `<div class="stg-vis">${srv.icon}</div><div class="stg-info">
     <div class="stg-title">🔊 ${ch.name}</div>
-    <div class="stg-sub">${srv.name} · ${ch.desc} · ${members.length} participante${members.length!==1?'s':''}</div>
+    <div class="stg-sub">${srv.name} · ${ch.desc||'Canal de voz'} · ${members.length} participante${members.length!==1?'s':''}</div>
     <div class="stg-acts">
       ${!S.connected
         ?'<button class="stg-btn p" onclick="joinVoice()">🎤 Entrar no canal</button>'
@@ -610,8 +622,13 @@ let progIv = null, localProg = 0;
 
 function updateMusicUI() {
   const m     = S.music;
+  const mbar  = document.querySelector('.mbar');
   const audio = document.getElementById('music-audio');
   const th    = document.getElementById('mb-th');
+
+  // Esconde a barra de música se o usuário não está em canal
+  if (mbar) mbar.style.display = S.connected ? '' : 'none';
+
   if (!m?.track) {
     document.getElementById('mb-ttl').textContent  = 'Nenhuma faixa tocando';
     document.getElementById('mb-art').textContent  = '🤖 Bot colaborativo · aguardando';
@@ -642,16 +659,18 @@ function updateMusicUI() {
   const isDirectPlay = ['radio','url','mp3','jamendo','audius'].includes(t.type);
 
   if (m.playing && !m.paused && streamUrl && isDirectPlay) {
-    if (audio.dataset.url !== streamUrl) {
-      // Para imediatamente o áudio anterior
+    // Rádios passam pelo proxy (resolve CORS e firewall corporativo)
+    const finalUrl = t.type === 'radio'
+      ? '/api/radioproxy?url=' + encodeURIComponent(streamUrl)
+      : streamUrl;
+    if (audio.dataset.url !== finalUrl) {
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
-      // Inicia novo stream
-      audio.dataset.url = streamUrl;
+      audio.dataset.url = finalUrl;
       audio.preload     = t.isLive ? 'none' : 'auto';
-      audio.src         = streamUrl;
-      audio.volume      = Math.min(1, parseInt(document.getElementById('vol-sl').value) / 100);
+      audio.src         = finalUrl;
+      audio.volume      = Math.min(1, parseInt(document.getElementById('vol-sl')?.value || 80) / 100);
       audio.muted       = S.localMuted;
       audio.play().catch(e => {
         if (e.name === 'NotAllowedError') {
@@ -1134,10 +1153,36 @@ function mascotLeave() {
   }
 }
 
+function openCreateChannel() {
+  if (!S.me) return toast('Faça login primeiro');
+  openMo('mo-create-channel');
+}
+
+function doCreateChannel() {
+  const name = document.getElementById('ch-name-input')?.value.trim();
+  const type = document.getElementById('ch-type-input')?.value || 'public';
+  const pass = document.getElementById('ch-pass-input')?.value || '';
+  if (!name) return toast('⚠️ Digite um nome para o canal');
+  const srv = S.servers[S.aSrv]; if (!srv) return;
+  socket.emit('channel:create', { srvId: srv.id, name, type, password: pass });
+  closeMo('mo-create-channel');
+  document.getElementById('ch-name-input').value = '';
+  document.getElementById('ch-pass-input').value = '';
+}
+
+socket.on('channel:created', ({ channel }) => {
+  toast('✅ Canal "' + channel.name + '" criado!');
+});
+
 function copyInvite() {
-  navigator.clipboard.writeText(window.location.href)
-    .then(() => toast('🔗 Link copiado!'))
-    .catch(() => toast('🔗 Copie o link da barra de endereços!'));
+  const url = window.location.href;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url)
+      .then(() => toast('🔗 Link copiado: ' + url))
+      .catch(() => { prompt('Copie o link:', url); });
+  } else {
+    prompt('Copie o link de convite:', url);
+  }
 }
 
 /* ── Ativar Som (contorna bloqueio de autoplay / TI) ── */

@@ -22,7 +22,7 @@
       <div class="lg-icon">
         <picture>
           <source srcset="/img/mascote.webp" type="image/webp">
-          <img src="/img/mascote.png" alt="VOX" style="width:40px;height:40px;object-fit:contain">
+          <img src="/img/mascote.png" alt="VOX" style="width:38px;height:38px;object-fit:contain;border-radius:6px">
         </picture>
       </div>
       <div>
@@ -343,6 +343,31 @@
     <div style="margin-top:20px;display:flex;gap:10px">
       <button class="mo-cancel" onclick="closeMo('mo-create-server')">Cancelar</button>
       <button class="mo-ok" onclick="doCreateServer()">🚀 Criar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: CRIAR CANAL ══ -->
+<div class="mo" id="mo-create-channel">
+  <div class="mo-box glass" style="max-width:400px">
+    <div class="mo-header">
+      <div><div class="mo-title">➕ Criar Canal</div><div class="mo-sub" id="cc-sub">Novo canal de voz</div></div>
+      <button class="mo-close" onclick="closeMo('mo-create-channel')">✕</button>
+    </div>
+    <label class="mo-field-label">Nome do canal</label>
+    <input class="mo-in" id="ch-name-input" placeholder="Ex: Lounge" maxlength="24" autocomplete="off">
+    <label class="mo-field-label" style="margin-top:12px">Tipo</label>
+    <select class="mo-select" id="ch-type-input" onchange="document.getElementById('ch-pass-row').style.display=this.value==='private'?'block':'none'">
+      <option value="public">🌐 Público</option>
+      <option value="private">🔒 Privado (senha)</option>
+    </select>
+    <div id="ch-pass-row" style="display:none;margin-top:12px">
+      <label class="mo-field-label">Senha do canal</label>
+      <input class="mo-in" id="ch-pass-input" type="password" placeholder="Senha de acesso">
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px">
+      <button class="mo-cancel" onclick="closeMo('mo-create-channel')">Cancelar</button>
+      <button class="mo-ok" onclick="doCreateChannel()">✅ Criar Canal</button>
     </div>
   </div>
 </div>
