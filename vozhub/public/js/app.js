@@ -94,7 +94,11 @@ function toast(m) {
 }
 
 /* ── Conexão ───────────────────────────────────────────── */
-let _appReady = false;
+let _appReady   = false;
+let _loginType  = 'new';   // new | returning | temp
+let _micMeterInterval = null;
+let _screen     = null;
+let _screenSharing = false;
 
 socket.on('connect', () => {
   console.log('[Socket] conectado:', socket.id);
@@ -152,8 +156,6 @@ socket.on('disconnect', reason => {
 /* ── Login ─────────────────────────────────────────────── */
 document.getElementById('ni').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-// ── Tipo de login ──────────────────────────────────────
-let _loginType = 'new';
 
 function selectLoginType(type) {
   _loginType = type;
@@ -963,7 +965,6 @@ function confirmClear() {
 
 /* ── Settings ──────────────────────────────────────────── */
 // ── Medidor de mic em tempo real ─────────────────────
-var _micMeterInterval = null; // var garante hoisting correto
 function startMicMeter() {
   stopMicMeter();
   if (!rtc?.analyser) return;
@@ -1201,8 +1202,6 @@ function closeMobilePanel() {
 const _origJoinVoice = typeof joinVoice !== 'undefined' ? joinVoice : null;
 
 /* ── Compartilhamento de Tela ──────────────────────────── */
-let _screen = null; // instância de ScreenShare
-let _screenSharing = false;
 
 async function toggleScreenShare() {
   if (!_screen) _screen = new ScreenShare(socket);
