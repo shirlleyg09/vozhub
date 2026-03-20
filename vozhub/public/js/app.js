@@ -214,20 +214,19 @@ async function _initApp(name, code) {
 }
 
 async function doLogin() {
-  const name = document.getElementById('ni')?.value.trim(); if (!name) return;
-  const code = document.getElementById('ci')?.value.trim().toUpperCase() || '';
-  document.getElementById('login-btn').disabled = true;
+  const name = document.getElementById('ni')?.value.trim();
+  if (!name) { toast('⚠️ Digite seu nome'); return; }
+  const code = (document.getElementById('ci')?.value || '').trim().toUpperCase();
 
-  if (_loginType === 'returning' && !code) {
-    toast('⚠️ Digite seu código de acesso'); 
-    document.getElementById('login-btn').disabled = false; 
+  if (_loginType === 'returning' && code.length < 6) {
+    toast('⚠️ Digite seu código de acesso (ex: ABCD1234)');
     return;
   }
 
-  // Salva nome para autopreenchimento
-  saveSession(name);
+  const btn = document.getElementById('login-btn');
+  if (btn) btn.disabled = true;
 
-  // Tenta autenticar via servidor
+  saveSession(name);
   socket.emit('auth:login', { name, code, type: _loginType });
 }
 
@@ -255,7 +254,32 @@ function logout() {
 /* ── Eventos servidor ──────────────────────────────────── */
 socket.on('app:ready', ({ socketId, servers }) => {
   S.me.socketId = socketId; S.servers = servers; rAll();
+  // Verifica se veio de convite
+  const urlParams = new URLSearchParams(window.location.search);
+  const invite = urlParams.get('invite');
+  if (invite) socket.emit('invite:use', { token: invite });
 });
+
+socket.on('app:servers_updated', ({ servers }) => { S.servers = servers; rAll(); });
+
+socket.on('invite:token', ({ token, url }) => {
+  navigator.clipboard?.writeText(url).catch(()=>{});
+  prompt('🔗 Link de convite (válido por 24h):', url);
+  toast('🔗 Link copiado!');
+});
+
+socket.on('invite:ok', ({ srvId, chId }) => {
+  const si = S.servers.findIndex(s => s.id === srvId);
+  if (si < 0) return;
+  S.aSrv = si;
+  const ci = S.servers[si].channels?.findIndex(c => c.id === chId);
+  if (ci >= 0) S.aCh = ci;
+  rAll();
+  setTimeout(() => joinVoice(), 400);
+  toast('🎉 Entrou pelo convite!');
+});
+
+socket.on('invite:invalid', () => toast('❌ Convite inválido ou expirado'));
 
 socket.on('channel:users', ({ key, users, music }) => {
   // Se users vazio, é confirmação que saímos — atualiza sempre
@@ -1182,14 +1206,18 @@ socket.on('channel:created', ({ channel }) => {
 });
 
 function copyInvite() {
-  const url = window.location.href;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(url)
-      .then(() => toast('🔗 Link copiado: ' + url))
-      .catch(() => { prompt('Copie o link:', url); });
-  } else {
-    prompt('Copie o link de convite:', url);
+  if (!S.connected) {
+    // Link geral se não estiver em canal
+    const url = window.location.href.split('?')[0];
+    navigator.clipboard?.writeText(url).catch(()=>{});
+    prompt('🔗 Link do VOX:', url);
+    return;
   }
+  // Gera convite específico para o canal atual
+  const srv = S.servers[S.aSrv];
+  const ch  = srv?.channels?.[S.aCh];
+  if (srv && ch) socket.emit('invite:generate', { srvId: srv.id, chId: ch.id });
+  else toast('⚠️ Selecione um canal primeiro');
 }
 
 /* ── Ativar Som (contorna bloqueio de autoplay / TI) ── */

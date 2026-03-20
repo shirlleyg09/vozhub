@@ -457,6 +457,41 @@ io.on('connection', socket => {
   socket.on('screen:answer', ({ to, answer })    => socket.to(to).emit('screen:answer', { from: socket.id, answer }));
   socket.on('screen:ice',    ({ to, candidate }) => socket.to(to).emit('screen:ice',    { from: socket.id, candidate }));
 
+  // ── Criar canal dinâmico ──────────────────────────────
+  socket.on('channel:create', ({ srvId, name, type, password }) => {
+    const user = state.sockets.get(socket.id); if (!user) return;
+    const srv  = SERVERS_CONFIG.find(s => s.id === srvId);
+    if (!srv) return;
+    name = (name||'').trim().slice(0,24); if (!name) return;
+    const chId = name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '-' + Date.now().toString(36);
+    const ch   = { id:chId, name, desc: type==='private'?'🔒 Canal privado':'Canal de voz', password: password||null, type: type||'public' };
+    srv.channels.push(ch);
+    const key = chKey(srvId, chId);
+    state.channels[key] = { srvId, chId, name, users: new Map(), musicBot: new MusicBot(io, key) };
+    io.emit('app:servers_updated', { servers: SERVERS_CONFIG.map(s => fullServer(s.id)) });
+    socket.emit('channel:created', { channel: ch });
+    console.log(`[channel] ${user.name} criou "${name}" em ${srvId}`);
+  });
+
+  // ── Gerar convite ──────────────────────────────────────
+  socket.on('invite:generate', ({ srvId, chId }) => {
+    const token = Math.random().toString(36).slice(2,10).toUpperCase();
+    // Salva convite em memória por 24h
+    if (!state.invites) state.invites = new Map();
+    state.invites.set(token, { srvId, chId, created: Date.now() });
+    socket.emit('invite:token', { token, url: `${process.env.APP_URL || 'https://vozhub.onrender.com'}?invite=${token}` });
+  });
+
+  // ── Usar convite ───────────────────────────────────────
+  socket.on('invite:use', ({ token }) => {
+    if (!state.invites) return socket.emit('invite:invalid');
+    const inv = state.invites.get(token);
+    if (!inv) return socket.emit('invite:invalid');
+    const age = Date.now() - inv.created;
+    if (age > 24*60*60*1000) { state.invites.delete(token); return socket.emit('invite:invalid'); }
+    socket.emit('invite:ok', { srvId: inv.srvId, chId: inv.chId });
+  });
+
   // ── Levantar a mão ────────────────────────────────────
   socket.on('hand:raise', () => {
     const user = state.sockets.get(socket.id); if (!user?.srvId) return;
