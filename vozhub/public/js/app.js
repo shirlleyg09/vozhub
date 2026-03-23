@@ -188,29 +188,41 @@ function selectLoginType(type) {
 }
 
 async function _initApp(name, code) {
+  // Mostra app
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
+
+  // Info do usuário no rodapé
   document.getElementById('up-name').textContent = name;
-  document.getElementById('up-tag').textContent  = code && code !== 'TEMP'
+  document.getElementById('up-tag').textContent  = (code && code !== 'TEMP')
     ? '#' + code.slice(-4)
     : '#' + String(Math.floor(Math.random()*9000)+1000);
   const av = document.getElementById('up-av');
-  av.className = 'up-av ' + avc(name);
-  av.innerHTML = ini(name) + '<div class="up-dot"></div>';
-  _appReady = true;
-  // Mostra código nas configurações
+  if (av) { av.className = 'up-av ' + avc(name); av.innerHTML = ini(name) + '<div class="up-dot"></div>'; }
+
+  // Código nas configurações
   const cd = document.getElementById('user-code-display');
   if (cd) cd.textContent = (!code || code === 'TEMP') ? '(temporário)' : code;
-  // Inicia WebRTC
+
+  _appReady = true;
+
+  // Inicia mic (não bloqueia login se falhar)
   rtc = new WebRTCManager(socket);
   rtc.onSpeaking = sp => {
     socket.emit('audio:speaking', { speaking: sp });
     mascotReact(sp ? 'speaking' : null);
   };
-  await rtc.initMic();
+  try { await rtc.initMic(); } catch(e) { console.warn('[App] mic error:', e.message); }
+
+  // Bot de áudio e screen share
   window._botAudio = new BotAudioPlayer(socket);
   if (!_screen) _screen = new ScreenShare(socket);
-  fetch('/api/sources').then(r => r.json()).then(src => { S.sources = src; updateSourceBadges(); }).catch(() => {});
+
+  // Renderiza UI
+  rAll();
+
+  // Fontes de música
+  fetch('/api/sources').then(r=>r.json()).then(src=>{ S.sources=src; updateSourceBadges(); }).catch(()=>{});
 }
 
 async function doLogin() {
@@ -690,14 +702,13 @@ function updateMusicUI() {
   const isDirectPlay = ['radio','url','mp3','jamendo','audius'].includes(t.type);
 
   if (m.playing && !m.paused && streamUrl && isDirectPlay) {
-    // Rádios passam pelo proxy (resolve CORS e firewall corporativo)
+    // botAudio.js gerencia o elemento <audio> via evento audio:direct do servidor
+    // updateMusicUI só toca se o botAudio ainda não iniciou (dataset.url vazio)
     const finalUrl = t.type === 'radio'
       ? '/api/radioproxy?url=' + encodeURIComponent(streamUrl)
       : streamUrl;
-    if (audio.dataset.url !== finalUrl) {
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
+    if (!audio.dataset.url || audio.dataset.url === '') {
+      // botAudio não iniciou ainda — toca direto
       audio.dataset.url = finalUrl;
       audio.preload     = t.isLive ? 'none' : 'auto';
       audio.src         = finalUrl;
@@ -705,10 +716,14 @@ function updateMusicUI() {
       audio.muted       = S.localMuted;
       audio.play().catch(e => {
         if (e.name === 'NotAllowedError') {
-          toast('🔊 Clique aqui para ativar o áudio');
+          toast('🔊 Clique para ativar o áudio');
           document.addEventListener('click', () => audio.play().catch(()=>{}), { once: true });
         }
       });
+    }
+    // Se audio.paused e já tem src, tenta retomar
+    else if (audio.paused && audio.src) {
+      audio.play().catch(()=>{});
     }
   } else if (!m.playing || m.paused) {
     // Para imediatamente — sem delay
